@@ -1,0 +1,17 @@
+identifier: me54bs62/nrf54l15/cpuapp
+name: Minew ME54BS62 (nRF54L15) module board
+vendor: minew
+type: mcu
+arch: arm
+toolchain:
+  - zephyr
+sysbuild: true
+ram: 188
+flash: 1428
+supported:
+  - adc
+  - counter
+  - gpio
+  - i2c
+  - i2s
+  - watchdog

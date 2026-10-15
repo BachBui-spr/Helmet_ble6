@@ -1,0 +1,231 @@
+/*
+ * Minew ME54BS62 - module nRF54L15 (WLCSP, CAAA) co anten PCB, gan tren "Helmet board".
+ *
+ * Theo datasheet ME54BS62 v1.0.0 (docs/ME54BS62-nRF54L15_Datasheet_K_EN.pdf):
+ *   - Y1 32 MHz   noi XC1/XC2  -> HFXO, dung tu tai noi (internal)
+ *   - Y2 32.768 kHz noi P1.00/P1.01 (XL1/XL2) -> LFXO, 2 chan nay KHONG ra pad
+ *   - ML1 cuon cam DC/DC giua DCC va DECD -> bat che do DC/DC
+ *   - SWD: SWDIO = B3, SWCLK = B4, nRESET = C2, VCC = D7
+ */
+
+/dts-v1/;
+
+#include <nordic/nrf54l15_cpuapp.dtsi>
+#include "me54bs62-pinctrl.dtsi"
+
+/ {
+	model = "Minew ME54BS62 (nRF54L15) module board";
+	compatible = "minew,me54bs62-cpuapp";
+
+	chosen {
+		zephyr,console = &uart20;
+		zephyr,shell-uart = &uart20;
+		zephyr,uart-mcumgr = &uart20;
+		zephyr,bt-mon-uart = &uart20;
+		zephyr,bt-c2h-uart = &uart20;
+		zephyr,code-partition = &slot0_partition;
+		zephyr,sram = &cpuapp_sram;
+		zephyr,flash = &cpuapp_rram;
+		zephyr,flash-controller = &rram_controller;
+		zephyr,ieee802154 = &ieee802154;
+		zephyr,boot-mode = &boot_mode0;
+	};
+
+	/*
+	 * ===== Phan cung tren "Helmet board" (docs/PCB helmet main schematic.pdf) =====
+	 */
+	leds {
+		compatible = "gpio-leds";
+
+		/* D3 qua transistor Q1 SS8050 (R16 2.2k) -> muc cao = LED sang */
+		bt_led: led_0 {
+			gpios = <&gpio2 7 GPIO_ACTIVE_HIGH>;	/* P2.07 - pad G2 */
+			label = "Bluetooth LED";
+		};
+	};
+
+	/*
+	 * 4 nut tren board nut: noi xuong GND khi nhan, pull-up 10k + tu 0.1uF tren
+	 * mach chinh -> active low. Tat ca o P0 (co GPIOTE30).
+	 * Van bat pull-up noi (~13k): neu pull-up ngoai/moi han bi ho thi chan khong
+	 * bi tha noi (tranh "nhan nut ao"); chi ton them ~0.25 mA trong luc dang nhan.
+	 */
+	buttons {
+		compatible = "gpio-keys";
+
+		btn_vol_up: button_0 {
+			gpios = <&gpio0 2 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* P0.02 - pad E1 */
+			label = "Vol Up";
+			zephyr,code = <INPUT_KEY_VOLUMEUP>;
+		};
+
+		btn_vol_down: button_1 {
+			gpios = <&gpio0 1 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* P0.01 - pad D1 */
+			label = "Vol Down";
+			zephyr,code = <INPUT_KEY_VOLUMEDOWN>;
+		};
+
+		btn_call: button_2 {
+			gpios = <&gpio0 0 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* P0.00 - pad C1 */
+			label = "Call";
+			zephyr,code = <INPUT_KEY_PLAYPAUSE>;
+		};
+
+		btn_power: button_3 {
+			gpios = <&gpio0 3 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;	/* P0.03 - pad F1 */
+			label = "Power";
+			zephyr,code = <INPUT_KEY_POWER>;
+		};
+	};
+
+	/*
+	 * I2C cho cam bien nhiet hong ngoai MLX90632 (dia chi 0x3A, ADDR = GND).
+	 * SDA = P1.13 (G6) va SCL = P0.04 (G1) nam o 2 mien nguon khac nhau -> khong
+	 * TWIM nao dung duoc (TWIM2x chi P1, TWIM30 chi P0, TWIM khong co cross-domain)
+	 * -> dung I2C bit-bang qua GPIO. Mach chua co dien tro keo len cho SDA/SCL nen
+	 * tam dung pull-up noi (~13k); nen them 4.7k ra 3.3V o ban PCB sau.
+	 */
+	i2c_sensor: i2c-sensor {
+		compatible = "gpio-i2c";
+		status = "okay";
+		clock-frequency = <I2C_BITRATE_STANDARD>;
+		scl-gpios = <&gpio0 4 (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+		sda-gpios = <&gpio1 13 (GPIO_OPEN_DRAIN | GPIO_PULL_UP)>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	aliases {
+		led0 = &bt_led;
+		sw0 = &btn_vol_up;
+		sw1 = &btn_vol_down;
+		sw2 = &btn_call;
+		sw3 = &btn_power;
+		i2c-sensor = &i2c_sensor;
+		mcuboot-button0 = &btn_power;
+		mcuboot-led0 = &bt_led;
+		watchdog0 = &wdt31;
+	};
+};
+
+&cpuapp_sram {
+	status = "okay";
+};
+
+/*
+ * Tu tai thach anh: module khong co tu ngoai cho Y1/Y2 nen dung tu noi cua SoC.
+ * Gia tri lay theo nRF54L15 DK - nen xac nhan CL cua thach anh voi Minew
+ * (datasheet: "confirm the specific configuration required with the salesperson").
+ */
+&lfxo {
+	load-capacitors = "internal";
+	load-capacitance-femtofarad = <17000>;
+};
+
+&hfxo {
+	load-capacitors = "internal";
+	load-capacitance-femtofarad = <15000>;
+};
+
+&regulators {
+	status = "okay";
+};
+
+/* ML1 co san trong module -> dung DC/DC de giam dong tieu thu */
+&vregmain {
+	status = "okay";
+	regulator-initial-mode = <NRF5X_REG_MODE_DCDC>;
+};
+
+&grtc {
+	owned-channels = <0 1 2 3 4 5 6 7 8 9 10 11>;
+	/* Channels 7-11 reserved for Zero Latency IRQs, 3-4 for FLPR */
+	child-owned-channels = <3 4 7 8 9 10 11>;
+	status = "okay";
+};
+
+&uart20 {
+	status = "okay";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart20_default>;
+	pinctrl-1 = <&uart20_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+/* Loa: 2 x MAX98357A (I2S, 16/24/32-bit, 8-96 kHz, khong can MCK) */
+&i2s20 {
+	status = "okay";
+	pinctrl-0 = <&i2s20_default>;
+	pinctrl-1 = <&i2s20_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+/* Micro: 2 x IM69D130 PDM stereo tren 1 duong DATA */
+&pdm20 {
+	status = "okay";
+	clock-source = "PCLK32M";
+	pinctrl-0 = <&pdm20_default>;
+	pinctrl-1 = <&pdm20_sleep>;
+	pinctrl-names = "default", "sleep";
+};
+
+/*
+ * P1.02 (pad D6) / P1.03 (pad C6) mac dinh dung lam GPIO thuong.
+ * Neu mach cua ban co anten NFC: xoa dong nfct-pins-as-gpios va dat status = "okay".
+ */
+&nfct {
+	nfct-pins-as-gpios;
+};
+
+&gpio0 {
+	status = "okay";
+};
+
+&gpio1 {
+	status = "okay";
+};
+
+&gpio2 {
+	status = "okay";
+};
+
+&gpiote20 {
+	status = "okay";
+};
+
+&gpiote30 {
+	status = "okay";
+};
+
+&radio {
+	status = "okay";
+};
+
+&ieee802154 {
+	status = "okay";
+};
+
+&temp {
+	status = "okay";
+};
+
+&clock {
+	status = "okay";
+};
+
+&adc {
+	status = "okay";
+};
+
+&gpregret1 {
+	status = "okay";
+
+	boot_mode0: boot_mode@0 {
+		compatible = "zephyr,retention";
+		status = "okay";
+		reg = <0x0 0x1>;
+	};
+};
+
+/* Bang phan vung RRAM mac dinh cua nRF54L15 (MCUboot 62K + 2 slot 712K + storage 36K) */
+#include <vendor/nordic/nrf54l15_cpuapp_partition.dtsi>

@@ -1,0 +1,59 @@
+{
+    "configurations": [
+        {
+            "name": "ME54BS62 nRF54L15 (Zephyr)",
+            "compileCommands": [
+                "${workspaceFolder}/build/main/main/compile_commands.json",
+                "${workspaceFolder}/build/Helmet/Helmet/compile_commands.json",
+                "${workspaceFolder}/build/hw_test/hw_test/compile_commands.json"
+            ],
+            "compilerPath": "${env:HOME}/ncs/toolchains/fbf7391cab/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
+            "compilerArgs": [
+                "-mcpu=cortex-m33",
+                "-mthumb",
+                "-mfloat-abi=hard",
+                "-mfpu=fpv5-sp-d16"
+            ],
+            "intelliSenseMode": "linux-gcc-arm",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++17",
+            "includePath": [
+                "${workspaceFolder}/apps/main/src",
+                "${workspaceFolder}/build/main/main/zephyr/include/generated/zephyr",
+                "${workspaceFolder}/build/main/main/zephyr/include/generated",
+                "${env:HOME}/ncs/v3.4.0/zephyr/include",
+                "${env:HOME}/ncs/v3.4.0/zephyr/lib/libc/common/include",
+                "${env:HOME}/ncs/v3.4.0/zephyr/lib/libc/picolibc/include",
+                "${env:HOME}/ncs/v3.4.0/zephyr/soc/nordic",
+                "${env:HOME}/ncs/v3.4.0/zephyr/soc/nordic/nrf54l",
+                "${env:HOME}/ncs/v3.4.0/zephyr/soc/nordic/common",
+                "${env:HOME}/ncs/v3.4.0/zephyr/subsys/bluetooth",
+                "${env:HOME}/ncs/v3.4.0/zephyr/modules/cmsis_6",
+                "${env:HOME}/ncs/v3.4.0/zephyr/modules/hal_nordic/nrfx",
+                "${env:HOME}/ncs/v3.4.0/nrf/include",
+                "${env:HOME}/ncs/v3.4.0/modules/hal/cmsis_6/CMSIS/Core/Include",
+                "${env:HOME}/ncs/v3.4.0/modules/hal/nordic/nrfx",
+                "${env:HOME}/ncs/v3.4.0/modules/hal/nordic/nrfx/drivers/include",
+                "${env:HOME}/ncs/v3.4.0/modules/hal/nordic/nrfx/bsp/stable",
+                "${env:HOME}/ncs/v3.4.0/modules/lib/liblc3/include",
+                "${env:HOME}/ncs/v3.4.0/modules/debug/segger/SEGGER",
+                "${env:HOME}/ncs/v3.4.0/modules/debug/segger/Config",
+                "${env:HOME}/ncs/v3.4.0/nrfxlib/softdevice_controller/include",
+                "${env:HOME}/ncs/v3.4.0/nrfxlib/mpsl/include"
+            ],
+            "defines": [
+                "KERNEL",
+                "K_HEAP_MEM_POOL_SIZE=0",
+                "NRF54L15_XXAA",
+                "NRF_APPLICATION",
+                "NRF_CONFIG_CPU_FREQ_MHZ=128",
+                "PICOLIBC_DOUBLE_PRINTF_SCANF",
+                "_POSIX_THREAD_SAFE_FUNCTIONS=200809L",
+                "__LINUX_ERRNO_EXTENSIONS__",
+                "__PROGRAM_START",
+                "__ZEPHYR__=1"
+            ]
+        }
+    ],
+    "version": 4
+}

@@ -1,0 +1,8 @@
+# Ngan ModemManager do/chiem cong VCOM (/dev/ttyACM*) cua J-Link va thiet bi Nordic.
+# Cai dat:
+#   sudo cp tools/71-nrf-jlink-modemmanager-ignore.rules /etc/udev/rules.d/
+#   sudo udevadm control --reload-rules && sudo udevadm trigger
+ACTION!="add|change", GOTO="nrf_mm_end"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1366", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEMS=="usb", ATTRS{idVendor}=="1915", ENV{ID_MM_DEVICE_IGNORE}="1"
+LABEL="nrf_mm_end"

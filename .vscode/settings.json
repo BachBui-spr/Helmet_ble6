@@ -1,0 +1,15 @@
+{
+    "nrf-connect.boardRoots": [
+        "${workspaceFolder}"
+    ],
+    "nrf-connect.applications": [
+        "${workspaceFolder}/apps/main",
+        "${workspaceFolder}/apps/Helmet",
+        "${workspaceFolder}/apps/hw_test"
+    ],
+    "files.associations": {
+        "*.overlay": "dts",
+        "*.dtsi": "dts",
+        "*.conf": "properties"
+    }
+}

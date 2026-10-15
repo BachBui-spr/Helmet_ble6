@@ -1,0 +1,65 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "ME54: Build",
+            "type": "shell",
+            "command": "make build",
+            "group": { "kind": "build", "isDefault": true },
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "ME54: Pristine build",
+            "type": "shell",
+            "command": "make pristine",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "ME54: Flash (J-Link)",
+            "type": "shell",
+            "command": "make flash",
+            "problemMatcher": []
+        },
+        {
+            "label": "ME54: Build + Flash",
+            "type": "shell",
+            "command": "make build flash",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "ME54: Build + Flash hw_test",
+            "type": "shell",
+            "command": "make APP=apps/hw_test build flash",
+            "problemMatcher": ["$gcc"]
+        },
+        {
+            "label": "ME54: RTT log/shell",
+            "type": "shell",
+            "command": "make rtt",
+            "isBackground": false,
+            "presentation": { "panel": "dedicated", "focus": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "ME54: Audio capture (Helmet)",
+            "type": "shell",
+            "command": "make audio",
+            "presentation": { "panel": "dedicated", "focus": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "ME54: UART log/shell",
+            "type": "shell",
+            "command": "make uart",
+            "presentation": { "panel": "dedicated", "focus": true },
+            "problemMatcher": []
+        },
+        {
+            "label": "ME54: Menuconfig",
+            "type": "shell",
+            "command": "make menuconfig",
+            "presentation": { "panel": "dedicated", "focus": true },
+            "problemMatcher": []
+        }
+    ]
+}

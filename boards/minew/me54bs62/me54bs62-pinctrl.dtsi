@@ -1,0 +1,75 @@
+/*
+ * Pin control cho Minew ME54BS62 (nRF54L15 WLCSP) tren mach "Helmet board"
+ * (docs/PCB helmet main schematic.pdf).
+ *
+ * Quy tac cua nRF54L15 (datasheet v1.0 muc 10.1):
+ *   - Peripheral chi dung chan GPIO CUNG MIEN NGUON:
+ *       UARTE00/SPIM00                        -> P2
+ *       UARTE/SPIM/TWIM 20-22, PWM20-22, I2S20, PDM20/21, SAADC -> P1
+ *       UARTE30/SPIM30/TWIM30                 -> P0
+ *     (ngoai le duy nhat: SPIM/SPIS/UARTE 20/21 dung mot so chan P2 khi bat Constant Latency)
+ *   - Tin hieu clock (SPIM SCK, TWIM SCL, PDM CLK, I2S SCK/MCK) phai o "clock pin".
+ *     Clock pin tren goi CAAA: P0.03 P0.04 P1.03 P1.04 P1.08 P1.11 P1.12 P2.01 P2.06
+ */
+
+&pinctrl {
+	/* UART20 - console/log/shell. TX = P1.04 (pad E6), RX = P1.05 (pad F7).
+	 * Tren mach Helmet 2 pad nay KHONG noi di dau -> chi dung khi han day thu.
+	 */
+	/omit-if-no-ref/ uart20_default: uart20_default {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 1, 4)>;
+		};
+
+		group2 {
+			psels = <NRF_PSEL(UART_RX, 1, 5)>;
+			bias-pull-up;
+		};
+	};
+
+	/omit-if-no-ref/ uart20_sleep: uart20_sleep {
+		group1 {
+			psels = <NRF_PSEL(UART_TX, 1, 4)>,
+				<NRF_PSEL(UART_RX, 1, 5)>;
+			low-power-enable;
+		};
+	};
+
+	/* I2S20 -> 2 ampli MAX98357A (Left/Right chon bang SD_MODE).
+	 * BCLK = P1.12 (G5, clock pin), LRCLK = P1.10 (G4), DIN = P1.15 (G7). Khong dung MCK.
+	 */
+	/omit-if-no-ref/ i2s20_default: i2s20_default {
+		group1 {
+			psels = <NRF_PSEL(I2S_SCK_M, 1, 12)>,
+				<NRF_PSEL(I2S_LRCK_M, 1, 10)>,
+				<NRF_PSEL(I2S_SDOUT, 1, 15)>;
+		};
+	};
+
+	/omit-if-no-ref/ i2s20_sleep: i2s20_sleep {
+		group1 {
+			psels = <NRF_PSEL(I2S_SCK_M, 1, 12)>,
+				<NRF_PSEL(I2S_LRCK_M, 1, 10)>,
+				<NRF_PSEL(I2S_SDOUT, 1, 15)>;
+			low-power-enable;
+		};
+	};
+
+	/* PDM20 -> 2 micro IM69D130 dung chung bus (stereo, SELECT L/R tren board micro).
+	 * CLK = P1.11 (F5, clock pin), DIN = P1.09 (F4).
+	 */
+	/omit-if-no-ref/ pdm20_default: pdm20_default {
+		group1 {
+			psels = <NRF_PSEL(PDM_CLK, 1, 11)>,
+				<NRF_PSEL(PDM_DIN, 1, 9)>;
+		};
+	};
+
+	/omit-if-no-ref/ pdm20_sleep: pdm20_sleep {
+		group1 {
+			psels = <NRF_PSEL(PDM_CLK, 1, 11)>,
+				<NRF_PSEL(PDM_DIN, 1, 9)>;
+			low-power-enable;
+		};
+	};
+};
