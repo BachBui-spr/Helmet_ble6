@@ -3,7 +3,11 @@
  *
  * - 16 kHz, 16 bit, stereo (2 micro tren cung 1 duong DATA, chon L/R bang chan SELECT).
  *   nRF54L15: 32 MHz / 25 = 1.28 MHz, ti le 80 -> dung 16 000 Hz (cung thach anh voi I2S).
- * - Khoi 10 ms = 160 mau x 2 kenh x 2 B = 640 B, 6 khoi trong kho.
+ * - Khoi 10 ms = 160 mau x 2 kenh x 2 B = 640 B, 12 khoi trong kho. Driver giu 2 khoi cho DMA
+ *   + toi da 10 khoi cho doc (queue-size cua pdm20, boards/me54bs62_nrf54l15_cpuapp.overlay)
+ *   -> thread giong noi duoc phep cham toi ~100 ms.
+ * - Hang doi day / het khoi: driver TU DUNG PDM va khong tu chay lai (dmic_nrfx_pdm.c,
+ *   stop_pdm) -> mic_in_restart() de voice_tx.c khoi dong lai.
  * - Micro chi chay khi co luong goi (khong co xung PDM -> micro ngu).
  * - Chi duoc goi tu thread giong noi (voice_tx.c).
  */
@@ -19,7 +23,8 @@
 LOG_MODULE_REGISTER(mic_in, LOG_LEVEL_INF);
 
 #define MIC_BLOCK_SIZE  (VOICE_FRAME * 2 * sizeof(int16_t))
-#define MIC_BLOCK_COUNT 6
+#define MIC_BLOCK_COUNT 12
+#define RESTART_TRIES   25 /* x 2 ms: cho PDM dung han (toi da 1 khoi 10 ms) truoc khi cau hinh lai */
 
 static const struct device *const dmic_dev = DEVICE_DT_GET(DT_NODELABEL(pdm20));
 K_MEM_SLAB_DEFINE_STATIC(mic_slab, MIC_BLOCK_SIZE, MIC_BLOCK_COUNT, 4);
@@ -42,7 +47,7 @@ bool mic_in_ready(void)
 	return ready;
 }
 
-int mic_in_start(uint32_t *t0_cyc)
+static int mic_start(uint32_t *t0_cyc, bool quiet)
 {
 	struct pcm_stream_cfg stream = {
 		.pcm_rate = VOICE_RATE,
@@ -74,7 +79,9 @@ int mic_in_start(uint32_t *t0_cyc)
 
 	err = dmic_configure(dmic_dev, &cfg);
 	if (err) {
-		LOG_ERR("dmic_configure failed (%d)", err);
+		if (!quiet) {
+			LOG_ERR("dmic_configure failed (%d)", err);
+		}
 		return err;
 	}
 
@@ -85,8 +92,36 @@ int mic_in_start(uint32_t *t0_cyc)
 	}
 	*t0_cyc = k_cycle_get_32();
 	running = true;
-	LOG_INF("Microphones started: %u Hz stereo, PDM CLK P1.11 / DATA P1.09", VOICE_RATE);
+	if (!quiet) {
+		LOG_INF("Microphones started: %u Hz stereo, PDM CLK P1.11 / DATA P1.09", VOICE_RATE);
+	}
 	return 0;
+}
+
+int mic_in_start(uint32_t *t0_cyc)
+{
+	return mic_start(t0_cyc, false);
+}
+
+int mic_in_restart(uint32_t *t0_cyc)
+{
+	int err = -EBUSY;
+
+	mic_in_stop();
+	/* Cho PDM ket thuc khoi dang ghi: driver tra not cac khoi DMA dang giu ve kho */
+	k_msleep(15);
+
+	/* Driver con "active" toi khi PDM bao da dung -> dmic_configure tra -EBUSY, thu lai */
+	for (int i = 0; i < RESTART_TRIES && err == -EBUSY; i++) {
+		err = mic_start(t0_cyc, true);
+		if (err == -EBUSY) {
+			k_msleep(2);
+		}
+	}
+	if (err) {
+		LOG_ERR("Microphone restart failed (%d)", err);
+	}
+	return err;
 }
 
 int mic_in_read(int16_t **block, int32_t timeout_ms)
@@ -133,5 +168,6 @@ void mic_in_stop(void)
 	while (dmic_read(dmic_dev, 0, &buf, &size, 0) == 0) {
 		k_mem_slab_free(&mic_slab, buf);
 	}
-	LOG_INF("Microphones stopped");
+	LOG_INF("Microphones stopped (free blocks %u/%u)", k_mem_slab_num_free_get(&mic_slab),
+		MIC_BLOCK_COUNT);
 }

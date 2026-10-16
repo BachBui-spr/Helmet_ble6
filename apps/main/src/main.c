@@ -1052,6 +1052,84 @@ static int cmd_perf(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* CPU that cua tung thread trong mot cua so thoi gian (CONFIG_THREAD_RUNTIME_STATS).
+ * Khac "helmet perf" (do thoi gian tu dau toi cuoi, ke ca luc bi thread khac chen ngang).
+ * Thoi gian ngat duoc tinh vao thread dang chay luc ngat xay ra.
+ */
+#define CPU_MAX_THREADS 24
+#define CPU_WINDOW_MS   2000
+
+struct cpu_snap {
+	const struct k_thread *t;
+	uint64_t cyc;
+};
+
+struct cpu_ctx {
+	struct cpu_snap s[CPU_MAX_THREADS];
+	uint8_t n;
+};
+
+static void cpu_collect(const struct k_thread *t, void *user_data)
+{
+	struct cpu_ctx *c = user_data;
+	k_thread_runtime_stats_t rs;
+
+	if (c->n < CPU_MAX_THREADS && k_thread_runtime_stats_get((k_tid_t)t, &rs) == 0) {
+		c->s[c->n].t = t;
+		c->s[c->n].cyc = rs.execution_cycles;
+		c->n++;
+	}
+}
+
+static int cmd_cpu(const struct shell *sh, size_t argc, char **argv)
+{
+	static struct cpu_ctx before;
+	static struct cpu_ctx after;
+	const uint32_t ms = (argc > 1) ? strtoul(argv[1], NULL, 10) : CPU_WINDOW_MS;
+	uint64_t window;
+	uint64_t busy = 0;
+
+	if (ms < 100 || ms > 60000) {
+		shell_error(sh, "Window: 100..60000 ms");
+		return -EINVAL;
+	}
+
+	before.n = 0;
+	k_thread_foreach_unlocked(cpu_collect, &before);
+	k_msleep(ms);
+	after.n = 0;
+	k_thread_foreach_unlocked(cpu_collect, &after);
+
+	window = (uint64_t)ms * sys_clock_hw_cycles_per_sec() / MSEC_PER_SEC;
+	shell_print(sh, "CPU over %u ms (128 MHz):", ms);
+	for (int i = 0; i < after.n; i++) {
+		const char *name = k_thread_name_get((k_tid_t)after.s[i].t);
+		uint64_t d = after.s[i].cyc;
+		uint32_t pct_x10;
+
+		for (int j = 0; j < before.n; j++) {
+			if (before.s[j].t == after.s[i].t) {
+				d -= before.s[j].cyc;
+				break;
+			}
+		}
+		pct_x10 = (uint32_t)(d * 1000U / window);
+		if (name == NULL || name[0] == '\0') {
+			name = "?";
+		}
+		if (strcmp(name, "idle") != 0) {
+			busy += d;
+		}
+		if (pct_x10 > 0) {
+			shell_print(sh, "  %-20s %3u.%u %%", name, pct_x10 / 10U, pct_x10 % 10U);
+		}
+	}
+	busy = busy * 1000U / window;
+	shell_print(sh, "  %-20s %3u.%u %%", "TOTAL (non-idle)", (uint32_t)busy / 10U,
+		    (uint32_t)busy % 10U);
+	return 0;
+}
+
 static int cmd_temp(const struct shell *sh, size_t argc, char **argv)
 {
 	return thermo_shell(sh, argc, argv);
@@ -1099,6 +1177,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(helmet_cmds,
 	SHELL_CMD_ARG(autooff, NULL, "Auto power off: helmet autooff <minutes> (0 = never)",
 		      cmd_autooff, 2, 0),
 	SHELL_CMD(perf, NULL, "CPU time of decode / output / voice DSP / encode", cmd_perf),
+	SHELL_CMD_ARG(cpu, NULL, "CPU load per thread: helmet cpu [window_ms] (default 2000)",
+		      cmd_cpu, 1, 1),
 	SHELL_CMD_ARG(temp, NULL,
 		      "Temperature: helmet temp [raw|cal|emis <permille>|alarm <C>]", cmd_temp,
 		      1, 2),

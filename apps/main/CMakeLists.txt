@@ -19,3 +19,9 @@ target_sources(app PRIVATE
   src/mlx90632.c
   src/thermo.c
 )
+
+# Cac file chay moi 10 ms trong cuoc goi: bien dich toi uu toc do thay cho -Os mac dinh cua
+# Zephyr (CONFIG_SIZE_OPTIMIZATIONS). liblc3 da duoc module cua no bien dich -O3 -ffast-math.
+# Do bang "helmet perf" va "helmet cpu".
+set_source_files_properties(src/voice_dsp.c PROPERTIES COMPILE_OPTIONS "-O3;-ffast-math")
+set_source_files_properties(src/voice_tx.c src/audio_out.c PROPERTIES COMPILE_OPTIONS "-O3")

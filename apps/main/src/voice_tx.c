@@ -15,6 +15,8 @@
  * - Tham chieu AEC: mau micro thu m ung voi mau tham chieu
  *       anchor_pos + (t_mic0 - t_anchor) * 16 kHz + m - AEC_MARGIN
  *   (xem audio_out.c). Tinh lai moi khi dau ra loa khoi dong lai (anchor gen doi).
+ * - Doc micro loi MIC_RESTART_AFTER lan lien tiep (driver PDM tu dung khi hang doi day) ->
+ *   khoi dong lai micro, dem lai vi tri mau va can lai tham chieu AEC.
  */
 
 #include <string.h>
@@ -43,6 +45,7 @@ LOG_MODULE_REGISTER(voice, LOG_LEVEL_INF);
 #define LEVEL_HYST    24
 #define AEC_MARGIN    32  /* lay tham chieu som 2 ms: duong am + tre bo loc PDM nam trong 256 he so */
 #define SENT_WATCHDOG_MS 60
+#define MIC_RESTART_AFTER 3 /* lan doc loi lien tiep (moi lan cho 30 ms) truoc khi chay lai */
 
 #define VOICE_STACK 6144
 #define VOICE_PRIO  K_PRIO_PREEMPT(3)
@@ -367,6 +370,7 @@ static void run_session(atomic_val_t my)
 	int64_t ref_off = 0;
 	bool ref_ok = false;
 	bool mic_ok;
+	int mic_fail_run = 0;
 
 	enc = lc3_setup_encoder(10000, tx_cfg.freq_hz, 0, &enc_mem);
 	if (enc == NULL) {
@@ -426,6 +430,21 @@ static void run_session(atomic_val_t my)
 				if (st.mic_err < 5 || (st.mic_err % 100) == 0) {
 					LOG_WRN("Mic read failed (%d), %u errors", err, st.mic_err);
 				}
+				if (++mic_fail_run >= MIC_RESTART_AFTER) {
+					mic_fail_run = 0;
+					if (mic_in_restart(&mic_t0) == 0) {
+						st.mic_restart++;
+						mic_pos = 0; /* khoi doc ke tiep la mau 0 cua lan chay moi */
+						ref_gen = UINT32_MAX; /* can lai tham chieu AEC */
+						LOG_WRN("Microphones restarted (%u)", st.mic_restart);
+						continue;
+					} else {
+						mic_ok = false;
+						st.mic_ok = false;
+					}
+				}
+			} else {
+				mic_fail_run = 0;
 			}
 		} else {
 			k_msleep(10);
@@ -489,8 +508,8 @@ static void run_session(atomic_val_t my)
 	}
 	q_flush();
 	vdsp_get_stats(&ds);
-	LOG_INF("Voice TX stop: sent %u SDU, underrun %u, mic err %u, ERLE %d dB", st.sdu_sent,
-		st.sdu_underrun, st.mic_err, (int)ds.erle_db);
+	LOG_INF("Voice TX stop: sent %u SDU, underrun %u, mic err %u, restart %u, ERLE %d dB",
+		st.sdu_sent, st.sdu_underrun, st.mic_err, st.mic_restart, (int)ds.erle_db);
 }
 
 static void voice_thread(void *p1, void *p2, void *p3)
@@ -599,9 +618,9 @@ void voice_print_status(const struct shell *sh)
 	shell_print(sh, "AEC       : far %u, double-talk %u, resets %u, ref missing %u",
 		    ds.far_blocks, ds.dt_blocks, ds.resets, v.ref_missing);
 	shell_print(sh, "TX        : sessions %u, blocks %u, sent %u, underrun %u, send err %u, "
-		    "pool empty %u, q drop %u, slip -%u/+%u, mic err %u",
+		    "pool empty %u, q drop %u, slip -%u/+%u, mic err %u, mic restart %u",
 		    v.sessions, v.mic_blocks, v.sdu_sent, v.sdu_underrun, v.send_err,
-		    v.pool_empty, v.q_drop, v.slip_drop, v.slip_insert, v.mic_err);
+		    v.pool_empty, v.q_drop, v.slip_drop, v.slip_insert, v.mic_err, v.mic_restart);
 }
 
 static void print_perf(const struct shell *sh, const char *name, const struct perf *p)

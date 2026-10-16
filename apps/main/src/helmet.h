@@ -281,6 +281,8 @@ void call_ctrl_print_status(const struct shell *sh);
 int mic_in_init(void);
 bool mic_in_ready(void);
 int mic_in_start(uint32_t *t0_cyc);
+/* Dung + chay lai (driver tu dung PDM khi hang doi day). t0_cyc: thoi diem bat dau moi */
+int mic_in_restart(uint32_t *t0_cyc);
 /* Doc 1 khoi 10 ms: 160 mau x 2 kenh (L, R xen ke) */
 int mic_in_read(int16_t **block, int32_t timeout_ms);
 void mic_in_free(int16_t *block);
@@ -292,6 +294,7 @@ struct helmet_voice_stats {
 	uint32_t sessions;
 	uint32_t mic_blocks;
 	uint32_t mic_err;
+	uint32_t mic_restart;  /* micro duoc khoi dong lai sau loi doc lien tiep */
 	uint32_t sdu_sent;
 	uint32_t sdu_underrun; /* het SDU khi controller can -> gui im lang */
 	uint32_t send_err;
