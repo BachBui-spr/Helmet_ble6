@@ -272,7 +272,8 @@ static struct bt_micp_mic_dev_cb micp_cb = {
 
 /* ---------------- API ---------------- */
 
-int call_ctrl_init(void)
+/* Goi TRUOC bt_enable(): chi them MICS vao co so du lieu GATT (xem main.c) */
+int call_ctrl_register(void)
 {
 	struct bt_micp_mic_dev_register_param micp_param = {
 		.cb = &micp_cb,
@@ -282,8 +283,14 @@ int call_ctrl_init(void)
 	err = bt_micp_mic_dev_register(&micp_param);
 	if (err) {
 		LOG_ERR("MICP register failed (%d)", err);
-		return err;
 	}
+	return err;
+}
+
+/* Goi sau bt_enable() + settings_load() */
+int call_ctrl_init(void)
+{
+	int err;
 
 	err = bt_tbs_client_register_cb(&tbs_cb);
 	if (err) {

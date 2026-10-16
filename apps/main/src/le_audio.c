@@ -36,11 +36,13 @@ static const struct bt_audio_codec_cap lc3_snk_cap = BT_AUDIO_CODEC_CAP_LC3(
 	BT_AUDIO_CODEC_CAP_DURATION_7_5 | BT_AUDIO_CODEC_CAP_DURATION_10,
 	BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1, 2), 26u, 155u, 1u, BT_AUDIO_CONTEXT_TYPE_MEDIA);
 
-/* Chieu gui (micro): 16_2 / 32_2 - 1 kenh, chi khung 10 ms (loi DSP lam viec theo 10 ms) */
+/* Chieu gui (micro): chi 16 kHz (16_1 / 16_2), 1 kenh, khung 10 ms (loi DSP lam viec theo 10 ms).
+ * Khong khai 32 kHz: ma hoa LC3 32 kHz + nang mau x2 lam CPU cuoc goi len ~98 % (do ngay
+ * 16/10/2026) -> luong giong noi tre, PDM tran. 16 kHz = bang rong, bang chat luong cuoc goi di dong.
+ */
 static const struct bt_audio_codec_cap lc3_src_cap = BT_AUDIO_CODEC_CAP_LC3(
-	BT_AUDIO_CODEC_CAP_FREQ_16KHZ | BT_AUDIO_CODEC_CAP_FREQ_32KHZ,
-	BT_AUDIO_CODEC_CAP_DURATION_10, BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1), 40u, 80u, 1u,
-	BT_AUDIO_CONTEXT_TYPE_CONVERSATIONAL);
+	BT_AUDIO_CODEC_CAP_FREQ_16KHZ, BT_AUDIO_CODEC_CAP_DURATION_10,
+	BT_AUDIO_CODEC_CAP_CHAN_COUNT_SUPPORT(1), 30u, 40u, 1u, BT_AUDIO_CONTEXT_TYPE_CONVERSATIONAL);
 
 static struct bt_pacs_cap snk_cap = {
 	.codec_cap = &lc3_snk_cap,
@@ -136,8 +138,14 @@ static int parse_codec_cfg(const struct bt_audio_codec_cfg *codec_cfg, enum bt_a
 	if (dir == BT_AUDIO_DIR_SOURCE) {
 		if (out->chan_cnt != 1 || out->frame_dur_us != 10000 ||
 		    (out->freq_hz != 16000 && out->freq_hz != 32000) ||
-		    out->octets_per_frame < 40 || out->octets_per_frame > 80) {
+		    out->octets_per_frame < 30 || out->octets_per_frame > 80) {
 			return -ENOTSUP;
+		}
+		if (out->freq_hz == 32000) {
+			/* PAC chi khai 16 kHz. Van nhan 32 kHz (ma hoa duoc, nhung nang CPU) de cuoc goi
+			 * khong bi tu choi khi dien thoai con dung ban PAC cu luu tu truoc.
+			 */
+			LOG_WRN("Phone chose 32 kHz uplink (stale PAC?) - heavy CPU; re-pair to refresh");
 		}
 		return 0;
 	}
@@ -527,7 +535,8 @@ static struct bt_bap_stream_ops stream_ops = {
 
 /* ---------------- API ---------------- */
 
-int le_audio_init(void)
+/* Goi TRUOC bt_enable(): chi them PACS va ASCS vao co so du lieu GATT (xem main.c) */
+int le_audio_register(void)
 {
 	static struct bt_bap_unicast_server_register_param param = {
 		.snk_cnt = CONFIG_BT_ASCS_MAX_ASE_SNK_COUNT,
@@ -547,11 +556,20 @@ int le_audio_init(void)
 		return err;
 	}
 
+	/* Chi dang ky dich vu GATT cua ASCS; ISO server (can controller) o le_audio_init() */
 	err = bt_bap_unicast_server_register(&param);
 	if (err) {
 		LOG_ERR("Unicast server register failed (%d)", err);
 		return err;
 	}
+
+	return 0;
+}
+
+/* Goi sau bt_enable() + settings_load() */
+int le_audio_init(void)
+{
+	int err;
 
 	err = bt_bap_unicast_server_register_cb(&unicast_server_cb);
 	if (err) {
@@ -585,7 +603,7 @@ int le_audio_init(void)
 	bt_bap_stream_cb_register(&src.stream, &stream_ops);
 
 	LOG_INF("BAP unicast server: %u sink ASE (LC3 16-48 kHz, 1-2 ch) + %u source ASE "
-		"(LC3 16/32 kHz mono)",
+		"(LC3 16 kHz mono)",
 		CONFIG_BT_ASCS_MAX_ASE_SNK_COUNT, CONFIG_BT_ASCS_MAX_ASE_SRC_COUNT);
 	return 0;
 }

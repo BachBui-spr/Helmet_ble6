@@ -1218,6 +1218,33 @@ int main(void)
 		buttons_ignore_until_release(KEY_POWER);
 	}
 
+	/* Dang ky moi dich vu GATT dong TRUOC bt_enable(). settings_load() tinh Database Hash ngay
+	 * luc nap va so voi hash da luu (gatt.c: db_hash_commit -> do_db_hash). Neu cac dich vu
+	 * LE Audio dang ky SAU settings_load, hash luc nap thieu chung -> moi lan khoi dong Zephyr
+	 * coi nhu DB da doi: gui Service Changed toan dai va danh dau moi dien thoai da ghep la
+	 * "change-unaware" (tra loi 0x12 Database Out Of Sync) -> dien thoai ket noi roi ngat lien
+	 * tuc, phai ghep lai. Zephyr chi cho dang ky truoc bt_enable() hoac sau settings_load()
+	 * (bt_gatt_service_register, gatt.h). Giu nguyen thu tu cu (TMAS, VCS, MICS, PACS, ASCS)
+	 * de handle khong doi -> hash khop ngay ca lan dau chay ban nay.
+	 */
+	err = bt_tmap_register(BT_TMAP_ROLE_UMR | BT_TMAP_ROLE_CT);
+	if (err) {
+		LOG_ERR("TMAP register failed (%d)", err);
+		return err;
+	}
+	err = media_ctrl_register();
+	if (err) {
+		return err;
+	}
+	err = call_ctrl_register();
+	if (err) {
+		return err;
+	}
+	err = le_audio_register();
+	if (err) {
+		return err;
+	}
+
 	err = bt_enable(NULL);
 	if (err) {
 		LOG_ERR("Bluetooth init failed (%d)", err);
@@ -1230,12 +1257,6 @@ int main(void)
 	}
 	saved_cfg = helmet_cfg;
 	bt_conn_auth_info_cb_register(&auth_info_cb);
-
-	err = bt_tmap_register(BT_TMAP_ROLE_UMR | BT_TMAP_ROLE_CT);
-	if (err) {
-		LOG_ERR("TMAP register failed (%d)", err);
-		return err;
-	}
 
 	err = media_ctrl_init();
 	if (err) {

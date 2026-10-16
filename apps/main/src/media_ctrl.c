@@ -148,9 +148,11 @@ static int send_media_cmd(uint8_t opcode)
 
 /* ---------------- API ---------------- */
 
-int media_ctrl_init(void)
+/* Goi TRUOC bt_enable(): chi them VCS vao co so du lieu GATT (xem main.c).
+ * Luc nay settings chua nap -> dang ky voi am luong mac dinh, media_ctrl_init() dat lai.
+ */
+int media_ctrl_register(void)
 {
-	/* helmet_cfg.volume da duoc nap tu settings truoc khi goi ham nay */
 	struct bt_vcp_vol_rend_register_param vcp_param = {
 		.step = VOLUME_STEP,
 		.mute = BT_VCP_STATE_UNMUTED,
@@ -159,11 +161,22 @@ int media_ctrl_init(void)
 	};
 	int err;
 
-	cur_volume = helmet_cfg.volume;
 	err = bt_vcp_vol_rend_register(&vcp_param);
 	if (err) {
 		LOG_ERR("VCP volume renderer register failed (%d)", err);
-		return err;
+	}
+	return err;
+}
+
+/* Goi sau bt_enable() + settings_load(): helmet_cfg.volume da la gia tri da luu */
+int media_ctrl_init(void)
+{
+	int err;
+
+	cur_volume = helmet_cfg.volume;
+	err = bt_vcp_vol_rend_set_vol(helmet_cfg.volume);
+	if (err) {
+		LOG_WRN("VCP restore volume failed (%d)", err);
 	}
 	audio_out_set_volume(helmet_cfg.volume, false);
 

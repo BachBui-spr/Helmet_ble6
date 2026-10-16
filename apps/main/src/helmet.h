@@ -240,6 +240,7 @@ struct helmet_rx_flags {
 	uint32_t empty; /* hop le nhung do dai 0 */
 };
 
+int le_audio_register(void); /* truoc bt_enable(): PACS + ASCS vao GATT */
 int le_audio_init(void);
 bool le_audio_is_streaming(void);        /* co it nhat 1 ASE sink dang phat */
 bool le_audio_source_streaming(void);    /* ASE source (micro) dang phat */
@@ -252,6 +253,7 @@ void le_audio_print_link_quality(const struct shell *sh);
 
 /* ---------------- media_ctrl.c ---------------- */
 
+int media_ctrl_register(void); /* truoc bt_enable(): VCS vao GATT */
 int media_ctrl_init(void);
 void media_ctrl_connected(struct bt_conn *conn);
 void media_ctrl_disconnected(void);
@@ -269,6 +271,7 @@ void media_ctrl_print_status(const struct shell *sh);
 
 enum helmet_call { CALL_NONE, CALL_INCOMING, CALL_OUTGOING, CALL_ACTIVE, CALL_HELD };
 
+int call_ctrl_register(void); /* truoc bt_enable(): MICS vao GATT */
 int call_ctrl_init(void);
 void call_ctrl_connected(struct bt_conn *conn); /* bat dau do GTBS */
 void call_ctrl_disconnected(void);

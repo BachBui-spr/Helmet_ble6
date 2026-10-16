@@ -8,6 +8,8 @@
  * hien, he so cua khoi do duoc khoi phuc (khong hoc nham giong nguoi doi mu).
  * NLP: giam them 16 dB khi chi co tieng nguoi ben kia (xoa tieng vong du).
  * Giam on: tru pho kieu Wiener, on nen uoc luong bang "minimum statistics" don gian.
+ *   Bien doi: FFT thuc 512 diem cua CMSIS-DSP (arm_rfft_fast_f32) khi co CONFIG_CMSIS_DSP_TRANSFORM
+ *   (hoac VDSP_CMSIS khi chay tren PC); neu khong, FFT phuc radix-2 tu viet (cham ~2-3 lan).
  * AGC: dua giong ve -20 dBFS, tang toi da +12 dB, khong tang khi chi co tieng vong.
  */
 
@@ -15,6 +17,13 @@
 #include <string.h>
 
 #include "voice_dsp.h"
+
+#if defined(CONFIG_CMSIS_DSP_TRANSFORM) || defined(VDSP_CMSIS)
+#define VDSP_RFFT 1
+#include <arm_math.h>
+#else
+#define VDSP_RFFT 0
+#endif
 
 #define PI_F 3.14159265358979f
 #define L    VDSP_TAPS
@@ -71,12 +80,18 @@ static float erle_db;
 
 /* Giam on */
 static float win[NS_WIN];
+#if VDSP_RFFT
+static arm_rfft_fast_instance_f32 rfft;
+static float ns_time[NS_FFT]; /* khung mien thoi gian (arm_rfft_fast_f32 ghi de dau vao) */
+static float ns_spec[NS_FFT]; /* pho dong goi: [0] DC, [1] Nyquist, [2k] + j[2k+1] = bin k */
+#else
 static float tw_re[NS_FFT / 2];
 static float tw_im[NS_FFT / 2];
-static float ns_in[NS_WIN];
-static float ns_ola[N];
 static float fre[NS_FFT];
 static float fim[NS_FFT];
+#endif
+static float ns_in[NS_WIN];
+static float ns_ola[N];
 static float psd_s[NS_BINS];
 static float psd_n[NS_BINS];
 static float gain_s[NS_BINS];
@@ -113,6 +128,7 @@ static float to_db(float p)
 	return 10.0f * log10f(p + 1e-12f);
 }
 
+#if !VDSP_RFFT
 /* FFT phuc radix-2 tai cho, NS_FFT diem */
 static void fft(float *re, float *im, bool inverse)
 {
@@ -164,6 +180,7 @@ static void fft(float *re, float *im, bool inverse)
 		}
 	}
 }
+#endif /* !VDSP_RFFT */
 
 void vdsp_init(void)
 {
@@ -183,10 +200,14 @@ void vdsp_init(void)
 	for (int i = 0; i < NS_WIN; i++) {
 		win[i] = sqrtf(0.5f - 0.5f * cosf(2.0f * PI_F * i / NS_WIN));
 	}
+#if VDSP_RFFT
+	(void)arm_rfft_fast_init_512_f32(&rfft); /* chi keo bang cua co 512 vao flash */
+#else
 	for (int k = 0; k < NS_FFT / 2; k++) {
 		tw_re[k] = cosf(2.0f * PI_F * k / NS_FFT);
 		tw_im[k] = -sinf(2.0f * PI_F * k / NS_FFT);
 	}
+#endif
 
 	vdsp_reset();
 }
@@ -273,12 +294,53 @@ static void aec_block(const float *ref, float *d, bool adapt)
 	memmove(xb, &xb[N], (L - 1) * sizeof(float));
 }
 
+/* Cap nhat pho on nen va tinh he so khuech dai cho bin k (p = cong suat cua bin) */
+static float ns_bin_gain(int k, float p)
+{
+	float g;
+
+	psd_s[k] = ns_primed ? 0.8f * psd_s[k] + 0.2f * p : p;
+	if (!ns_primed || psd_s[k] < psd_n[k]) {
+		psd_n[k] = psd_s[k];
+	} else {
+		psd_n[k] *= NS_RISE;
+	}
+
+	g = 1.0f - NS_OVER * NS_BIAS * psd_n[k] / (psd_s[k] + 1e-12f);
+	g = g < NS_FLOOR ? NS_FLOOR : (g > 1.0f ? 1.0f : g);
+	gain_s[k] = 0.6f * gain_s[k] + 0.4f * g;
+	return gain_s[k];
+}
+
 /* Giam on pho, cua so 20 ms, buoc 10 ms (tre them 10 ms) */
 static void ns_block(float *x)
 {
+	const float *y;
+
 	memmove(ns_in, &ns_in[N], (NS_WIN - N) * sizeof(float));
 	memcpy(&ns_in[NS_WIN - N], x, N * sizeof(float));
 
+#if VDSP_RFFT
+	for (int i = 0; i < NS_FFT; i++) {
+		ns_time[i] = (i < NS_WIN) ? ns_in[i] * win[i] : 0.0f;
+	}
+	arm_rfft_fast_f32(&rfft, ns_time, ns_spec, 0);
+
+	/* DC va Nyquist la so thuc */
+	ns_spec[0] *= ns_bin_gain(0, ns_spec[0] * ns_spec[0]);
+	ns_spec[1] *= ns_bin_gain(NS_FFT / 2, ns_spec[1] * ns_spec[1]);
+	for (int k = 1; k < NS_FFT / 2; k++) {
+		float *b = &ns_spec[2 * k];
+		const float g = ns_bin_gain(k, b[0] * b[0] + b[1] * b[1]);
+
+		b[0] *= g;
+		b[1] *= g;
+	}
+	ns_primed = true;
+
+	arm_rfft_fast_f32(&rfft, ns_spec, ns_time, 1);
+	y = ns_time;
+#else
 	for (int i = 0; i < NS_FFT; i++) {
 		fre[i] = (i < NS_WIN) ? ns_in[i] * win[i] : 0.0f;
 		fim[i] = 0.0f;
@@ -286,34 +348,24 @@ static void ns_block(float *x)
 	fft(fre, fim, false);
 
 	for (int k = 0; k < NS_BINS; k++) {
-		const float p = fre[k] * fre[k] + fim[k] * fim[k];
-		float g;
+		const float g = ns_bin_gain(k, fre[k] * fre[k] + fim[k] * fim[k]);
 
-		psd_s[k] = ns_primed ? 0.8f * psd_s[k] + 0.2f * p : p;
-		if (!ns_primed || psd_s[k] < psd_n[k]) {
-			psd_n[k] = psd_s[k];
-		} else {
-			psd_n[k] *= NS_RISE;
-		}
-
-		g = 1.0f - NS_OVER * NS_BIAS * psd_n[k] / (psd_s[k] + 1e-12f);
-		g = g < NS_FLOOR ? NS_FLOOR : (g > 1.0f ? 1.0f : g);
-		gain_s[k] = 0.6f * gain_s[k] + 0.4f * g;
-
-		fre[k] *= gain_s[k];
-		fim[k] *= gain_s[k];
+		fre[k] *= g;
+		fim[k] *= g;
 		if (k > 0 && k < NS_FFT / 2) {
-			fre[NS_FFT - k] *= gain_s[k];
-			fim[NS_FFT - k] *= gain_s[k];
+			fre[NS_FFT - k] *= g;
+			fim[NS_FFT - k] *= g;
 		}
 	}
 	ns_primed = true;
 
 	fft(fre, fim, true);
+	y = fre;
+#endif
 
 	for (int n = 0; n < N; n++) {
-		x[n] = ns_ola[n] + fre[n] * win[n];
-		ns_ola[n] = fre[N + n] * win[N + n];
+		x[n] = ns_ola[n] + y[n] * win[n];
+		ns_ola[n] = y[N + n] * win[N + n];
 	}
 }
 

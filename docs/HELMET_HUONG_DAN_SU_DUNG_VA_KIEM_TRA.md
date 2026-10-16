@@ -346,7 +346,7 @@ Quay số trên điện thoại. Helmet chuyển sang `IN_CALL` ngay khi điện
 | Tắt micro từ điện thoại | Bấm nút micro trên màn hình cuộc gọi | Helmet tắt micro và phát `mic_muted` |
 
 - Kết thúc cuộc gọi thì micro **tự bật lại** cho cuộc sau.
-- **Xử lý giọng nói:** lọc thông cao 100 Hz, khử vọng, giảm ồn, tự động chỉnh mức về −20 dBFS. Giọng được xử lý ở 16 kHz; nếu điện thoại chọn 32 kHz thì Helmet nâng tần số trước khi gửi.
+- **Xử lý giọng nói:** lọc thông cao 100 Hz, khử vọng, giảm ồn (FFT thực CMSIS-DSP), tự động chỉnh mức về −20 dBFS. Giọng được xử lý và gửi ở 16 kHz: Helmet chỉ khai báo 16 kHz cho chiều gửi, vì 32 kHz làm CPU cuộc gọi lên khoảng 98 % (đo ngày 16/10/2026). Nếu điện thoại vẫn chọn 32 kHz (do còn nhớ bản PAC cũ), Helmet vẫn nhận và nâng tần số trước khi gửi, kèm cảnh báo `Phone chose 32 kHz uplink (stale PAC?)`. Khi thấy cảnh báo này thì ghép lại điện thoại một lần.
 - **Micro lỗi:** nếu driver micro (PDM) không khởi động được hoặc đọc lỗi, cuộc gọi **không rớt**: Helmet gửi im lặng và báo cho điện thoại là micro không dùng được (log `Microphone not available - sending silence`).
 - ⚠ **Board micro chưa nối:** Helmet **không tự phát hiện được**. Bộ PDM vẫn chạy và đọc đường DATA đang thả nổi, nên người bên kia nghe im lặng hoặc tiếng ồn lạ. Kiểm tra micro trước bằng `hw_test` (mục 13.4).
 
@@ -404,7 +404,7 @@ make APP=apps/main audio          # (thay cho rtt) nghe lại âm thanh Helmet n
 <inf> helmet: === Helmet (apps/main): music + calls + gestures + power + temperature ===
 <inf> audio_out: Audio out ready: LC3 -> clock slip -> prompts -> fixed resampler -> I2S20
 <inf> media_ctrl: Volume restored: 128/255
-<inf> le_audio: BAP unicast server: 2 sink ASE (LC3 16-48 kHz, 1-2 ch) + 1 source ASE (LC3 16/32 kHz mono)
+<inf> le_audio: BAP unicast server: 2 sink ASE (LC3 16-48 kHz, 1-2 ch) + 1 source ASE (LC3 16 kHz mono)
 <inf> helmet: State BOOT -> IDLE
 <inf> helmet: Advertising as "Helmet" (fast 20-30 ms)
 <inf> audio_out: I2S 16000 Hz -> actual 15873.015 Hz (MCK 32 MHz/63, ratio 32), resample 126/125
@@ -606,7 +606,7 @@ Làm theo thứ tự. Mỗi mức chỉ cần phần cứng của mức đó và
 | 4 | Không đo được % pin; chưa bật tự tắt khi pin cạn | Chỉ có cảnh báo "pin sắp hết" theo VDD |
 | 5 | Micro chỉ chạy khi có cuộc gọi; không có lệnh thử micro riêng trong `apps/main`; **không phát hiện được board micro chưa nối** | Thử micro bằng `apps/hw_test` (mục 13.4) |
 | 6 | Không có gọi lại số cuối, không có trợ lý giọng nói | Giới hạn của chuẩn TBS và của thiết kế |
-| 7 | Chiều gửi chỉ hỗ trợ khung 10 ms (16_2, 32_2) | Điện thoại nào chỉ dùng 7.5 ms cho cuộc gọi sẽ không chuyển cuộc gọi sang mũ |
+| 7 | Chiều gửi chỉ hỗ trợ khung 10 ms, 16 kHz (16_1, 16_2) | Điện thoại nào chỉ dùng 7.5 ms cho cuộc gọi sẽ không chuyển cuộc gọi sang mũ |
 | 8 | Chưa ghi được tín hiệu micro và tham chiếu qua RTT để chỉnh khử vọng | Cần sửa `scripts/helmet_audio.py` |
 | 9 | Khi "tắt", pin vẫn tốn khoảng 60 µA (LDO luôn bật) | PCB bản sau nên có mạch tự giữ nguồn |
 | 10 | Nhánh "ngắt sau 30 s chưa mã hóa" chưa được tạo lại trên mạch | Bài M0-11 |
