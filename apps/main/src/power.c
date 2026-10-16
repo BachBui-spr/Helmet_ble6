@@ -158,6 +158,7 @@ FUNC_NORETURN void power_off(enum power_off_reason why)
 
 	/* 4-5. Ngat ket noi (ly do 0x15: tat nguon), dung quang ba */
 	app_bt_shutdown();
+	status_led_shutdown_wait();
 
 	/* 6-7. Dung am thanh, micro, cam bien */
 	voice_stop();

@@ -193,6 +193,8 @@ static void set_state(enum helmet_state s)
 	LOG_INF("State %s -> %s", app_state_str(state), app_state_str(s));
 	state = s;
 
+	status_led_set_state(s);
+
 	/* Call: nhan dup chi co nghia khi dang ket noi (bai ke tiep) hoac dang goi (tat micro).
 	 * Khi do chuong phai nghe may ngay, khong cho 350 ms.
 	 */
@@ -1197,6 +1199,10 @@ int main(void)
 	int err;
 
 	LOG_INF("=== Helmet (apps/main): music + calls + gestures + power + temperature ===");
+	err = status_led_init();
+	if (err) {
+		LOG_WRN("Status LED init failed (%d)", err);
+	}
 
 	err = audio_out_init();
 	if (err) {

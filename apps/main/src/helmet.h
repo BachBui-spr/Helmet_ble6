@@ -107,6 +107,11 @@ enum helmet_evt_type {
 	EVT_POWER_OFF_REQ, /* lenh shell */
 };
 
+/* ---------------- status_led.c ---------------- */
+int status_led_init(void);
+void status_led_set_state(enum helmet_state state);
+void status_led_shutdown_wait(void);
+
 struct helmet_evt {
 	uint8_t type;
 	uint8_t a;
