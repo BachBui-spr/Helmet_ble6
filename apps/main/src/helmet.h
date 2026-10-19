@@ -16,6 +16,9 @@
  *   mlx90632.c   : driver MLX90632 + cong thuc Melexis
  *   thermo.c     : lich do nhiet, loc, canh bao, Health Thermometer Service
  *   capture.c    : chep SDU LC3 nhan duoc ra RTT kenh 1
+ *   intercom.c   : intercom mu-mu: chon vai tro bang nut, ket noi, ghep doi, noi lai
+ *   ic_service.c : Helmet Intercom Service (GATT): server o moi mu, client o master
+ *   ic_audio.c   : intercom: BAP Unicast Client o master, LC3 16 kHz hai chieu toi slave
  */
 
 #ifndef HELMET_H_
@@ -105,6 +108,7 @@ enum helmet_evt_type {
 	EVT_TEMP_ALARM,    /* a = 1 vuot nguong / 0 tro lai */
 	EVT_LOW_BATTERY,   /* a = 1 canh bao / 2 phai tat */
 	EVT_POWER_OFF_REQ, /* lenh shell */
+	EVT_IC,            /* intercom: co viec moi trong hang doi rieng cua intercom.c */
 };
 
 /* ---------------- status_led.c ---------------- */
@@ -129,16 +133,31 @@ void app_gesture(uint8_t key, uint8_t gesture);
 /* power.c: ngat ket noi (cho toi 1 s) + dung quang ba */
 void app_bt_shutdown(void);
 void app_adv_set_slow(bool slow);
+/* intercom.c: nhu cau quang ba doi (slave bat/tat co IC trong du lieu quang ba) */
+void app_adv_refresh(void);
+/* intercom.c: ket noi den khong phai mu ban -> giao cho luong dien thoai (nhan luon 1 ref) */
+void app_phone_adopt(struct bt_conn *conn);
 
 /* ---------------- buttons.c ---------------- */
 
 enum helmet_key { KEY_VOL_UP, KEY_VOL_DOWN, KEY_CALL, KEY_POWER, KEY_COUNT };
-enum helmet_gesture { G_SHORT, G_DOUBLE, G_LONG, G_VERY_LONG, G_REPEAT, G_COMBO_VOL, G_COUNT };
+enum helmet_gesture {
+	G_SHORT,
+	G_DOUBLE,
+	G_LONG,
+	G_VERY_LONG,
+	G_REPEAT,
+	G_COMBO_VOL,
+	G_SEQ_HOLD, /* Vol+/Vol- giu 2 s ngay sau Power nhan ngan: chon vai tro intercom */
+	G_COUNT,
+};
 
 void buttons_init(void);
 void buttons_handle(const struct helmet_evt *evt); /* chi goi tu bo dieu khien */
 void buttons_set_double(enum helmet_key key, bool enabled);
 void buttons_ignore_until_release(enum helmet_key key);
+/* Sau Power nhan ngan: lan nhan Vol dau tien trong window_ms la buoc 2 cua to hop */
+void buttons_arm_seq(uint32_t window_ms);
 const char *buttons_key_str(uint8_t key);
 const char *buttons_gesture_str(uint8_t gesture);
 int buttons_key_from_str(const char *s);
@@ -182,6 +201,12 @@ enum helmet_prompt {
 	PROMPT_LOW_BATTERY,
 	PROMPT_STATUS_OK,
 	PROMPT_STATUS_NO_LINK,
+	PROMPT_IC_SEARCH,   /* lap: master dang tim (2 tieng di len) */
+	PROMPT_IC_WAIT,     /* lap: slave dang cho (2 tieng di xuong) */
+	PROMPT_IC_LINKED,   /* da ket noi voi mu ban */
+	PROMPT_IC_END,      /* ket thuc / huy intercom */
+	PROMPT_IC_LOST,     /* mat lien ket, khong noi lai duoc */
+	PROMPT_IC_UNAVAIL,  /* het 60 s khong tim thay / khong duoc ket noi */
 	PROMPT_COUNT,
 };
 
@@ -324,6 +349,8 @@ void voice_start(struct bt_bap_stream *stream, const struct helmet_stream_cfg *c
 void voice_stop(void);
 void voice_on_sent(struct bt_bap_stream *stream);
 void voice_set_mute(bool mute);
+/* Thu nghiem: thay giong noi bang am sin hz (0 = tat), sau DSP, khong qua khu vong/giam on */
+void voice_set_tone(uint16_t hz);
 bool voice_is_muted(void);
 void voice_set_dsp(bool aec, bool ns, bool agc);
 void voice_get_dsp(bool *aec, bool *ns, bool *agc);
@@ -370,5 +397,76 @@ void capture_stream_stop(uint8_t idx);
 void capture_sdu(uint8_t idx, uint8_t iso_flags, uint16_t iso_seq, uint32_t ts,
 		 const uint8_t *data, uint16_t len);
 void capture_print_status(const struct shell *sh);
+
+/* ---------------- intercom.c + ic_service.c ---------------- */
+
+/* Helmet Intercom Service: UUID 128 bit rieng (docs/HELMET_THIET_KE_INTERCOM.md muc 6.2) */
+#define IC_UUID_SVC_VAL BT_UUID_128_ENCODE(0x0eed0001, 0x080c, 0x4225, 0xa3d0, 0xf91ce86a80c2)
+#define IC_UUID_CP_VAL  BT_UUID_128_ENCODE(0x0eed0003, 0x080c, 0x4225, 0xa3d0, 0xf91ce86a80c2)
+#define IC_UUID_EVT_VAL BT_UUID_128_ENCODE(0x0eed0004, 0x080c, 0x4225, 0xa3d0, 0xf91ce86a80c2)
+
+#define IC_PROTO_VER      1
+#define IC_ADV_FLAG_SLAVE BIT(0) /* trong Service Data quang ba: dang cho master ket noi */
+#define IC_MSG_LEN        4      /* [op][session][arg][arg2] */
+
+enum ic_op {
+	IC_OP_HELLO = 0x01, /* arg = phien ban giao thuc */
+	IC_OP_END = 0x14,   /* arg = enum ic_reason */
+};
+
+enum ic_reason {
+	IC_REASON_USER = 0x00,
+	IC_REASON_POWER_OFF = 0x02,
+	IC_REASON_NOT_ALLOWED = 0x06,
+	IC_REASON_VERSION = 0x07,
+};
+
+enum ic_role { IC_ROLE_NONE, IC_ROLE_MASTER, IC_ROLE_SLAVE };
+
+enum ic_mode {
+	ICM_NORMAL,  /* khong co vai tro, mu chay nhu binh thuong */
+	ICM_SEARCH,  /* master: dang quet tim slave */
+	ICM_WAIT,    /* slave: dang quang ba co IC, cho master */
+	ICM_LINKING, /* master: dang ket noi / ma hoa / bat tay HIS */
+	ICM_LINKED,  /* da ket noi voi mu ban */
+	ICM_ENDING,  /* dang ket thuc (gui END, cho ngat) */
+};
+
+int intercom_init(void);
+void intercom_handle(void); /* EVT_IC, chi goi tu thread bo dieu khien */
+void intercom_select(enum ic_role role);
+void intercom_stop(void);
+enum ic_mode intercom_mode(void);
+const char *intercom_mode_str(enum ic_mode m);
+void intercom_shutdown(void); /* power_off: gui END, ngat lien ket mu-mu */
+int intercom_shell(const struct shell *sh, size_t argc, char **argv);
+void intercom_log_status(void); /* 1 dong heartbeat khi khac ICM_NORMAL */
+
+/* Goi tu callback Bluetooth (main.c). true = ket noi nay do intercom quan ly */
+bool intercom_conn_connected(struct bt_conn *conn, uint8_t err);
+bool intercom_conn_owned(const struct bt_conn *conn);
+void intercom_conn_secured(struct bt_conn *conn, bt_security_t level, enum bt_security_err err);
+void intercom_conn_disconnected(struct bt_conn *conn, uint8_t reason);
+void intercom_conn_release(struct bt_conn *conn); /* bo khoi bang quan ly (giao dien thoai) */
+bool intercom_adv_ic(void); /* slave dang cho: quang ba them co IC, toc do nhanh */
+
+/* Goi tu ic_service.c / ic_audio.c (bt_rx) */
+void intercom_on_msg(struct bt_conn *conn, uint8_t op, uint8_t arg);
+void intercom_on_discovered(struct bt_conn *conn, int err);
+void intercom_on_audio(uint8_t ev, uint8_t arg);
+
+/* ic_audio.c (master) - moi ham tru init chi goi tu thread bo dieu khien */
+int ic_audio_init(void);
+int ic_audio_start(struct bt_conn *conn);
+void ic_audio_on_event(uint8_t ev, uint8_t arg);
+void ic_audio_conn_lost(void);
+bool ic_audio_streaming(void);
+const char *ic_audio_state_str(void);
+void ic_audio_print(const struct shell *sh);
+
+/* ic_service.c */
+int ic_svc_discover(struct bt_conn *conn); /* master: tim HIS + dang ky Event */
+int ic_svc_send(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg);
+bool ic_svc_busy(void); /* con lenh ghi / indicate chua xong */
 
 #endif /* HELMET_H_ */

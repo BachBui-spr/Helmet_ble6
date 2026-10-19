@@ -44,6 +44,8 @@ LOG_MODULE_REGISTER(helmet, LOG_LEVEL_INF);
  * cua Android o lan dau)
  */
 #define SEC_TIMEOUT_S       30
+/* To hop intercom: sau Power nhan ngan co 2 s de bat dau giu Vol+ (master) / Vol- (slave) */
+#define IC_SEQ_WINDOW_MS    2000
 
 K_MSGQ_DEFINE(app_q, sizeof(struct helmet_evt), APP_Q_LEN, 4);
 
@@ -52,6 +54,7 @@ static struct bt_le_ext_adv *adv;
 static bool adv_slow;    /* che do quang ba mong muon: true = 150 ms */
 static bool adv_on;      /* bo quang ba dang chay that */
 static bool adv_on_slow; /* ... va dang o che do cham */
+static bool adv_data_ic; /* du lieu quang ba dang co co intercom (slave dang cho) */
 static struct bt_conn *active_conn;
 static bt_security_t sec_level;
 static K_SEM_DEFINE(disc_sem, 0, 1);
@@ -235,14 +238,54 @@ static const struct bt_data ad[] = {
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
+/* Slave intercom dang cho: them Service Data 128 bit cua HIS de master nhan ra */
+static const uint8_t ic_addata[] = {IC_UUID_SVC_VAL, IC_PROTO_VER, IC_ADV_FLAG_SLAVE};
+
+static const struct bt_data ad_ic[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE,
+		      BT_BYTES_LIST_LE16(BT_APPEARANCE_WEARABLE_AUDIO_DEVICE_HEADSET)),
+	BT_DATA_BYTES(BT_DATA_UUID16_SOME, BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL),
+		      BT_UUID_16_ENCODE(BT_UUID_CAS_VAL), BT_UUID_16_ENCODE(BT_UUID_TMAS_VAL)),
+	BT_DATA(BT_DATA_SVC_DATA16, tmas_addata, ARRAY_SIZE(tmas_addata)),
+	BT_DATA(BT_DATA_SVC_DATA16, cas_addata, ARRAY_SIZE(cas_addata)),
+	BT_DATA(BT_DATA_SVC_DATA16, ascs_addata, ARRAY_SIZE(ascs_addata)),
+	BT_DATA(BT_DATA_SVC_DATA128, ic_addata, ARRAY_SIZE(ic_addata)),
+	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+};
+
 static void adv_work_handler(struct k_work *work)
 {
+	/* Quang ba khi chua co dien thoai, hoac khi la slave intercom dang cho (ca khi da co dien
+	 * thoai: BT_MAX_CONN = 3). Slave dang cho luon quang ba nhanh.
+	 */
+	const bool ic = intercom_adv_ic();
+	const bool want = adv != NULL && state != HS_SHUTDOWN && (active_conn == NULL || ic);
+	const bool slow = adv_slow && !ic;
 	int err;
 
 	ARG_UNUSED(work);
 
-	if (active_conn != NULL || adv == NULL || state == HS_SHUTDOWN) {
+	if (!want) {
+		/* Chi dung khi dang chay (vd het che do slave trong luc co dien thoai). Dung ->
+		 * recycled() -> work nay -> !want va adv_on = false -> ket thuc, khong lap.
+		 */
+		if (adv != NULL && adv_on) {
+			(void)bt_le_ext_adv_stop(adv);
+			adv_on = false;
+			LOG_INF("Advertising stopped");
+		}
 		return;
+	}
+
+	if (ic != adv_data_ic) {
+		err = bt_le_ext_adv_set_data(adv, ic ? ad_ic : ad, ic ? ARRAY_SIZE(ad_ic) : ARRAY_SIZE(ad),
+					     NULL, 0);
+		if (err) {
+			LOG_ERR("Advertising data update failed (%d)", err);
+		} else {
+			adv_data_ic = ic;
+		}
 	}
 
 	/* Dang quang ba dung che do mong muon -> khong lam gi.
@@ -250,7 +293,7 @@ static void adv_work_handler(struct k_work *work)
 	 * bt_conn dang cho ket noi -> Zephyr goi recycled() -> recycled() gui lai work nay
 	 * -> vong lap vo han chiem het CPU (da gap tren mach).
 	 */
-	if (adv_on && adv_on_slow == adv_slow) {
+	if (adv_on && adv_on_slow == slow) {
 		return;
 	}
 
@@ -259,8 +302,8 @@ static void adv_work_handler(struct k_work *work)
 		adv_on = false;
 	}
 
-	err = bt_le_ext_adv_update_param(adv, adv_slow ? BT_BAP_ADV_PARAM_CONN_REDUCED
-						       : BT_BAP_ADV_PARAM_CONN_QUICK);
+	err = bt_le_ext_adv_update_param(adv, slow ? BT_BAP_ADV_PARAM_CONN_REDUCED
+						   : BT_BAP_ADV_PARAM_CONN_QUICK);
 	if (err) {
 		LOG_WRN("Advertising param update failed (%d)", err);
 	}
@@ -271,14 +314,19 @@ static void adv_work_handler(struct k_work *work)
 		return;
 	}
 	adv_on = true;
-	adv_on_slow = adv_slow;
-	LOG_INF("Advertising as \"%s\" (%s)", CONFIG_BT_DEVICE_NAME,
-		adv_slow ? "reduced 150 ms" : "fast 20-30 ms");
+	adv_on_slow = slow;
+	LOG_INF("Advertising as \"%s\" (%s%s)", CONFIG_BT_DEVICE_NAME,
+		slow ? "reduced 150 ms" : "fast 20-30 ms", ic ? ", intercom slave" : "");
 }
 
 void app_adv_set_slow(bool slow)
 {
 	adv_slow = slow;
+	k_work_submit(&adv_work);
+}
+
+void app_adv_refresh(void)
+{
 	k_work_submit(&adv_work);
 }
 
@@ -305,6 +353,7 @@ void app_bt_shutdown(void)
 {
 	struct bt_conn *conn = active_conn ? bt_conn_ref(active_conn) : NULL;
 
+	intercom_shutdown(); /* bao END cho mu ban truoc khi ngat */
 	set_state(HS_SHUTDOWN);
 	if (conn != NULL) {
 		k_sem_reset(&disc_sem);
@@ -324,10 +373,22 @@ void app_bt_shutdown(void)
 static void connected(struct bt_conn *conn, uint8_t err)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
+	struct bt_conn_info info;
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
-	/* Controller tu dung quang ba khi co ket noi (hoac khi quang ba ket thuc loi) */
-	adv_on = false;
+	/* Controller tu dung bo quang ba khi co ket noi DEN (peripheral). Ket noi central do
+	 * intercom master tao khong anh huong bo quang ba.
+	 */
+	if (bt_conn_get_info(conn, &info) != 0 || info.role == BT_CONN_ROLE_PERIPHERAL) {
+		adv_on = false;
+	}
+	/* Ket noi mu-mu (master) hoac ung vien khi slave dang cho: intercom.c xu ly */
+	if (intercom_conn_connected(conn, err)) {
+		if (!err) {
+			LOG_INF("Connected: %s (intercom)", addr);
+		}
+		return;
+	}
 	if (err) {
 		LOG_WRN("Connection to %s failed (0x%02x %s)", addr, err, bt_hci_err_to_str(err));
 		return;
@@ -355,9 +416,14 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 	LOG_INF("Disconnected: %s (reason 0x%02x %s)", addr, reason, bt_hci_err_to_str(reason));
-	(void)k_work_cancel_delayable(&sec_timeout_work);
+
+	if (intercom_conn_owned(conn)) {
+		intercom_conn_disconnected(conn, reason);
+		return;
+	}
 
 	if (conn == active_conn) {
+		(void)k_work_cancel_delayable(&sec_timeout_work);
 		bt_conn_unref(active_conn);
 		active_conn = NULL;
 		adv_slow = false; /* mat ket noi that: quang ba nhanh lai 30 s */
@@ -403,6 +469,10 @@ static void sec_timeout_handler(struct k_work *work)
 
 static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
 {
+	if (intercom_conn_owned(conn)) {
+		intercom_conn_secured(conn, level, err);
+		return;
+	}
 	if (err) {
 		/* Zephyr chi bao loi, khong tu ngat: ngat la chinh sach cua ung dung. May kia tu
 		 * choi ghep doi, hoac ma hoa bang khoa cu ma Helmet da xoa -> ngat ngay de quang
@@ -464,6 +534,57 @@ static struct bt_conn_auth_info_cb auth_info_cb = {
 	.pairing_complete = pairing_complete,
 	.pairing_failed = pairing_failed,
 };
+
+/* Ket noi ma intercom (slave dang cho) nhan lam ung vien nhung khong phai mu ban: chuyen
+ * sang luong dien thoai. Chay trong sysworkq (cooperative, nhu bt_rx) de doi active_conn an
+ * toan voi cac callback Bluetooth.
+ */
+K_MSGQ_DEFINE(adopt_q, sizeof(struct bt_conn *), 2, 4);
+
+static void adopt_work_fn(struct k_work *work)
+{
+	struct bt_conn *conn;
+	struct bt_conn_info info;
+
+	ARG_UNUSED(work);
+
+	while (k_msgq_get(&adopt_q, &conn, K_NO_WAIT) == 0) {
+		intercom_conn_release(conn);
+		if (bt_conn_get_info(conn, &info) != 0 || info.state != BT_CONN_STATE_CONNECTED) {
+			bt_conn_unref(conn);
+			continue;
+		}
+		if (active_conn != NULL) {
+			LOG_INF("Extra connection (not a helmet, phone already connected) - disconnecting");
+			(void)bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+			bt_conn_unref(conn);
+			continue;
+		}
+		active_conn = conn; /* giu ref */
+		sec_level = bt_conn_get_security(conn);
+		LOG_INF("Connection handed over to phone handling (security %d)", sec_level);
+		app_post(EVT_CONNECTED, 0, 0, 0);
+		if (sec_level >= BT_SECURITY_L2) {
+			app_post(EVT_SECURED, 0, 0, 0);
+			media_ctrl_connected(conn);
+		} else {
+			k_work_reschedule(&sec_timeout_work, K_SECONDS(SEC_TIMEOUT_S));
+		}
+	}
+}
+
+static K_WORK_DEFINE(adopt_work, adopt_work_fn);
+
+void app_phone_adopt(struct bt_conn *conn)
+{
+	if (k_msgq_put(&adopt_q, &conn, K_NO_WAIT) != 0) {
+		intercom_conn_release(conn);
+		(void)bt_conn_disconnect(conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+		bt_conn_unref(conn);
+		return;
+	}
+	k_work_submit(&adopt_work);
+}
 
 /* ---------------- Nut nhan: gpio-keys -> su kien tho ---------------- */
 
@@ -535,6 +656,13 @@ void app_gesture(uint8_t key, uint8_t g)
 
 	switch (key) {
 	case KEY_CALL:
+		/* Cuoc goi dien thoai uu tien; sau do intercom (Call ngan: huy / ket thuc) */
+		if (state != HS_RINGING && state != HS_IN_CALL && intercom_mode() != ICM_NORMAL) {
+			if (g == G_SHORT) {
+				intercom_stop();
+			}
+			break;
+		}
 		if (state == HS_RINGING) {
 			if (g == G_SHORT) {
 				err = call_ctrl_accept();
@@ -559,7 +687,9 @@ void app_gesture(uint8_t key, uint8_t g)
 		break;
 
 	case KEY_VOL_UP:
-		if (g == G_SHORT || g == G_REPEAT) {
+		if (g == G_SEQ_HOLD) {
+			intercom_select(IC_ROLE_MASTER); /* Power ngan -> giu Vol+ 2 s */
+		} else if (g == G_SHORT || g == G_REPEAT) {
 			err = media_ctrl_volume_up();
 		} else if (g == G_COMBO_VOL && (state == HS_IDLE || state == HS_CONNECTED)) {
 			factory_unpair();
@@ -567,7 +697,9 @@ void app_gesture(uint8_t key, uint8_t g)
 		break;
 
 	case KEY_VOL_DOWN:
-		if (g == G_SHORT || g == G_REPEAT) {
+		if (g == G_SEQ_HOLD) {
+			intercom_select(IC_ROLE_SLAVE); /* Power ngan -> giu Vol- 2 s */
+		} else if (g == G_SHORT || g == G_REPEAT) {
 			err = media_ctrl_volume_down();
 		}
 		break;
@@ -576,7 +708,18 @@ void app_gesture(uint8_t key, uint8_t g)
 		if (g == G_VERY_LONG) {
 			power_off(OFF_BUTTON);
 		} else if (g == G_SHORT) {
-			audio_out_prompt(active_conn ? PROMPT_STATUS_OK : PROMPT_STATUS_NO_LINK);
+			const enum ic_mode m = intercom_mode();
+
+			if (m == ICM_SEARCH || m == ICM_WAIT || m == ICM_LINKING) {
+				intercom_stop(); /* dang tim / cho: Power ngan = huy */
+				break;
+			}
+			audio_out_prompt((active_conn || m == ICM_LINKED) ? PROMPT_STATUS_OK
+									 : PROMPT_STATUS_NO_LINK);
+			/* Buoc 1 cua to hop chon vai tro intercom */
+			if (m == ICM_NORMAL && (state == HS_IDLE || state == HS_CONNECTED)) {
+				buttons_arm_seq(IC_SEQ_WINDOW_MS);
+			}
 		}
 		break;
 
@@ -702,9 +845,14 @@ static void handle_event(const struct helmet_evt *evt)
 		break;
 
 	case EVT_IDLE_TIMEOUT:
-		if (state == HS_IDLE) {
+		/* Dang co intercom (ke ca tim / cho) thi khong tu tat */
+		if (state == HS_IDLE && intercom_mode() == ICM_NORMAL) {
 			power_off(OFF_IDLE);
 		}
+		break;
+
+	case EVT_IC:
+		intercom_handle();
 		break;
 
 	case EVT_ADV_SLOWDOWN:
@@ -780,6 +928,8 @@ static void heartbeat(void)
 			(t.ambient_mc < 0 ? -t.ambient_mc : t.ambient_mc) % 1000 / 10, t.age_ms,
 			t.alarm ? ", ALARM" : "");
 	}
+
+	intercom_log_status();
 
 	if (atomic_get(&q_overflow)) {
 		LOG_WRN("app queue overflow: %d events lost", (int)atomic_set(&q_overflow, 0));
@@ -1045,6 +1195,11 @@ static int cmd_autooff(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_ic(const struct shell *sh, size_t argc, char **argv)
+{
+	return intercom_shell(sh, argc, argv);
+}
+
 static int cmd_perf(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(argc);
@@ -1181,6 +1336,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(helmet_cmds,
 	SHELL_CMD(perf, NULL, "CPU time of decode / output / voice DSP / encode", cmd_perf),
 	SHELL_CMD_ARG(cpu, NULL, "CPU load per thread: helmet cpu [window_ms] (default 2000)",
 		      cmd_cpu, 1, 1),
+	SHELL_CMD_ARG(ic, NULL,
+		      "Intercom: helmet ic [status|master|slave|stop|unpair|tone <Hz>|off]", cmd_ic,
+		      1, 2),
 	SHELL_CMD_ARG(temp, NULL,
 		      "Temperature: helmet temp [raw|cal|emis <permille>|alarm <C>]", cmd_temp,
 		      1, 2),
@@ -1257,6 +1415,7 @@ int main(void)
 	}
 	saved_cfg = helmet_cfg;
 	bt_conn_auth_info_cb_register(&auth_info_cb);
+	(void)intercom_init();
 
 	err = media_ctrl_init();
 	if (err) {

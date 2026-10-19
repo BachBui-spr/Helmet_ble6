@@ -19,6 +19,7 @@
  *   khoi dong lai micro, dem lai vi tri mau va can lai tham chieu AEC.
  */
 
+#include <math.h>
 #include <string.h>
 
 #include <zephyr/kernel.h>
@@ -61,6 +62,7 @@ static atomic_t active;
 static atomic_t muted;
 static atomic_t tx_seq;
 static atomic_t last_sent_cyc;
+static atomic_t tone_hz; /* thu nghiem: thay giong noi bang am sin (0 = tat) */
 
 static struct bt_bap_stream *tx_stream;
 static struct helmet_stream_cfg tx_cfg;
@@ -371,6 +373,7 @@ static void run_session(atomic_val_t my)
 	bool ref_ok = false;
 	bool mic_ok;
 	int mic_fail_run = 0;
+	float tone_phase = 0.0f;
 
 	enc = lc3_setup_encoder(10000, tx_cfg.freq_hz, 0, &enc_mem);
 	if (enc == NULL) {
@@ -483,6 +486,17 @@ static void run_session(atomic_val_t my)
 
 		if (atomic_get(&muted)) {
 			memset(out, 0, sizeof(out));
+		} else if (atomic_get(&tone_hz) != 0) {
+			/* Am thu -12 dBFS thay cho giong noi (dat sau DSP: giam on khong nuot mat) */
+			const float inc = 2.0f * 3.14159265f * (float)atomic_get(&tone_hz) / VOICE_RATE;
+
+			for (int n = 0; n < VOICE_FRAME; n++) {
+				out[n] = (int16_t)(8192.0f * sinf(tone_phase));
+				tone_phase += inc;
+				if (tone_phase > 2.0f * 3.14159265f) {
+					tone_phase -= 2.0f * 3.14159265f;
+				}
+			}
 		}
 		pcm_push(out, VOICE_FRAME);
 		level_update();
@@ -553,6 +567,11 @@ void voice_stop(void)
 	atomic_set(&active, 0);
 	atomic_inc(&session);
 	st.active = false;
+}
+
+void voice_set_tone(uint16_t hz)
+{
+	atomic_set(&tone_hz, hz);
 }
 
 void voice_set_mute(bool mute)

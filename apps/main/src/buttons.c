@@ -14,6 +14,9 @@
  *   G_VERY_LONG giu toi 3 s
  *   G_REPEAT    Vol+/Vol- giu: lan dau sau 500 ms, sau do moi 250 ms
  *   G_COMBO_VOL Vol+ va Vol- cung nhan (cach nhau <= 200 ms) va giu 5 s
+ *   G_SEQ_HOLD  to hop intercom: bo dieu khien goi buttons_arm_seq() khi Power nhan ngan;
+ *               lan nhan Vol dau tien trong cua so do duoc "giu lai": giu du 2 s -> G_SEQ_HOLD
+ *               (khong lap am luong), nha som -> G_SHORT (1 nac am luong)
  * Nha trong khoang 600-1000 ms: khong phat gi (tranh nham ngan/giu).
  *
  * Moi lan hen gio tang "the he" (gen) cua phim; su kien hen gio mang gen cu (da bi huy
@@ -38,6 +41,7 @@ LOG_MODULE_REGISTER(buttons, LOG_LEVEL_INF);
 #define T_REPEAT       250
 #define T_COMBO        5000
 #define T_COMBO_PAIR   200
+#define T_SEQ_HOLD     2000
 
 #define COMBO_TIMER KEY_COUNT
 
@@ -50,6 +54,7 @@ enum key_st {
 	ST_HELD2,  /* da phat G_VERY_LONG, cho nha */
 	ST_REPEAT, /* Vol: dang lap */
 	ST_COMBO,  /* Vol+ va Vol- cung nhan */
+	ST_SEQ,    /* Vol nhan trong cua so to hop Power -> Vol, cho du 2 s */
 	ST_IGNORE, /* bo qua toi lan nha ke tiep */
 };
 
@@ -65,10 +70,12 @@ static struct key_sm keys[KEY_COUNT];
 static struct k_timer combo_timer;
 static uint32_t combo_gen;
 static bool combo_fired;
+static bool seq_armed;
+static uint32_t seq_until;
 
 static const char *const key_names[KEY_COUNT] = {"volup", "voldown", "call", "power"};
-static const char *const gesture_names[G_COUNT] = {"short", "double", "long", "vlong", "repeat",
-						   "combo"};
+static const char *const gesture_names[G_COUNT] = {"short",  "double", "long",   "vlong",
+						   "repeat", "combo",  "seqhold"};
 
 static bool is_vol(uint8_t k)
 {
@@ -118,6 +125,19 @@ static void on_press(uint8_t k, uint32_t now)
 		return; /* su kien nhan lap (khong mong doi) */
 	}
 
+	/* To hop intercom: chi lan nhan dau tien sau Power nhan ngan moi duoc tinh */
+	if (seq_armed) {
+		const bool in_window = (int32_t)(now - seq_until) <= 0;
+
+		seq_armed = false;
+		if (is_vol(k) && in_window) {
+			s->st = ST_SEQ;
+			s->t_down = now;
+			start_timer(k, T_SEQ_HOLD);
+			return;
+		}
+	}
+
 	if (is_vol(k)) {
 		const uint8_t other = (k == KEY_VOL_UP) ? KEY_VOL_DOWN : KEY_VOL_UP;
 		struct key_sm *o = &keys[other];
@@ -159,6 +179,12 @@ static void on_release(uint8_t k, uint32_t now)
 	case ST_DOWN2:
 		s->st = ST_IDLE;
 		emit(k, G_DOUBLE);
+		return;
+	case ST_SEQ:
+		/* Nha truoc 2 s: chi la 1 lan nhan Vol binh thuong */
+		stop_timer(k);
+		s->st = ST_IDLE;
+		emit(k, G_SHORT);
 		return;
 	case ST_COMBO: {
 		const uint8_t other = (k == KEY_VOL_UP) ? KEY_VOL_DOWN : KEY_VOL_UP;
@@ -227,6 +253,10 @@ static void on_timer(uint8_t k, uint32_t gen)
 		s->st = ST_IDLE;
 		emit(k, G_SHORT);
 		break;
+	case ST_SEQ:
+		s->st = ST_HELD2; /* bo qua toi khi nha */
+		emit(k, G_SEQ_HOLD);
+		break;
 	default:
 		break;
 	}
@@ -270,6 +300,12 @@ void buttons_ignore_until_release(enum helmet_key key)
 		stop_timer(key);
 		keys[key].st = ST_IGNORE;
 	}
+}
+
+void buttons_arm_seq(uint32_t window_ms)
+{
+	seq_armed = true;
+	seq_until = k_uptime_get_32() + window_ms;
 }
 
 const char *buttons_key_str(uint8_t key)

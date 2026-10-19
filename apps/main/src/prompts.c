@@ -44,6 +44,13 @@ static const struct prompt_seg s_temp_alarm[] = {{2637, 150, 100}, {2637, 150, 1
 static const struct prompt_seg s_low_battery[] = {{440, 150, 100}, {440, 150, 0}};
 static const struct prompt_seg s_status_ok[] = {{1319, 80, 0}};
 static const struct prompt_seg s_status_no_link[] = {{1319, 80, 80}, {1319, 80, 0}};
+/* Intercom: master = cap tieng di len, slave = di xuong (lap toi khi co ket qua) */
+static const struct prompt_seg s_ic_search[] = {{1175, 60, 40}, {1568, 90, 900}};
+static const struct prompt_seg s_ic_wait[] = {{1568, 60, 40}, {1175, 90, 900}};
+static const struct prompt_seg s_ic_linked[] = {{1047, 60, 30}, {1319, 60, 30}, {1568, 120, 0}};
+static const struct prompt_seg s_ic_end[] = {{1568, 60, 30}, {1319, 60, 30}, {1047, 120, 0}};
+static const struct prompt_seg s_ic_lost[] = {{784, 150, 50}, {587, 250, 0}};
+static const struct prompt_seg s_ic_unavail[] = {{587, 100, 80}, {587, 100, 0}};
 
 #define DEF(id, nm, s, lp) [id] = {.name = nm, .seg = s, .n = ARRAY_SIZE(s), .loop = lp}
 
@@ -61,6 +68,12 @@ static const struct prompt_def defs[PROMPT_COUNT] = {
 	DEF(PROMPT_LOW_BATTERY, "low_battery", s_low_battery, false),
 	DEF(PROMPT_STATUS_OK, "status_ok", s_status_ok, false),
 	DEF(PROMPT_STATUS_NO_LINK, "status_no_link", s_status_no_link, false),
+	DEF(PROMPT_IC_SEARCH, "ic_search", s_ic_search, true),
+	DEF(PROMPT_IC_WAIT, "ic_wait", s_ic_wait, true),
+	DEF(PROMPT_IC_LINKED, "ic_linked", s_ic_linked, false),
+	DEF(PROMPT_IC_END, "ic_end", s_ic_end, false),
+	DEF(PROMPT_IC_LOST, "ic_lost", s_ic_lost, false),
+	DEF(PROMPT_IC_UNAVAIL, "ic_unavail", s_ic_unavail, false),
 };
 
 /* Bang sin 1 chu ky + 1 mau de noi suy khong phai quay vong */

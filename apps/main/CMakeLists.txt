@@ -19,6 +19,9 @@ target_sources(app PRIVATE
   src/mlx90632.c
   src/thermo.c
   src/status_led.c
+  src/intercom.c
+  src/ic_service.c
+  src/ic_audio.c
 )
 
 # Cac file chay moi 10 ms trong cuoc goi: bien dich toi uu toc do thay cho -Os mac dinh cua
