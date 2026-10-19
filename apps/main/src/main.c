@@ -221,9 +221,12 @@ static const uint8_t cas_addata[] = {
 	BT_AUDIO_UNICAST_ANNOUNCEMENT_GENERAL,
 };
 
+/* TMAP: nghe nhac unicast (UMR), goi dien (CT), nghe broadcast Auracast (BMR) */
+#define HELMET_TMAP_ROLES (BT_TMAP_ROLE_UMR | BT_TMAP_ROLE_CT | BT_TMAP_ROLE_BMR)
+
 static const uint8_t tmas_addata[] = {
 	BT_UUID_16_ENCODE(BT_UUID_TMAS_VAL),
-	BT_BYTES_LIST_LE16(BT_TMAP_ROLE_UMR | BT_TMAP_ROLE_CT),
+	BT_BYTES_LIST_LE16(HELMET_TMAP_ROLES),
 };
 
 static const struct bt_data ad[] = {
@@ -231,10 +234,13 @@ static const struct bt_data ad[] = {
 	BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE,
 		      BT_BYTES_LIST_LE16(BT_APPEARANCE_WEARABLE_AUDIO_DEVICE_HEADSET)),
 	BT_DATA_BYTES(BT_DATA_UUID16_SOME, BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL),
-		      BT_UUID_16_ENCODE(BT_UUID_CAS_VAL), BT_UUID_16_ENCODE(BT_UUID_TMAS_VAL)),
+		      BT_UUID_16_ENCODE(BT_UUID_CAS_VAL), BT_UUID_16_ENCODE(BT_UUID_TMAS_VAL),
+		      BT_UUID_16_ENCODE(BT_UUID_BASS_VAL)),
 	BT_DATA(BT_DATA_SVC_DATA16, tmas_addata, ARRAY_SIZE(tmas_addata)),
 	BT_DATA(BT_DATA_SVC_DATA16, cas_addata, ARRAY_SIZE(cas_addata)),
 	BT_DATA(BT_DATA_SVC_DATA16, ascs_addata, ARRAY_SIZE(ascs_addata)),
+	/* Scan Delegator: Broadcast Assistant (dien thoai) nhan ra mu nghe duoc Auracast */
+	BT_DATA_BYTES(BT_DATA_SVC_DATA16, BT_UUID_16_ENCODE(BT_UUID_BASS_VAL)),
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
@@ -246,10 +252,13 @@ static const struct bt_data ad_ic[] = {
 	BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE,
 		      BT_BYTES_LIST_LE16(BT_APPEARANCE_WEARABLE_AUDIO_DEVICE_HEADSET)),
 	BT_DATA_BYTES(BT_DATA_UUID16_SOME, BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL),
-		      BT_UUID_16_ENCODE(BT_UUID_CAS_VAL), BT_UUID_16_ENCODE(BT_UUID_TMAS_VAL)),
+		      BT_UUID_16_ENCODE(BT_UUID_CAS_VAL), BT_UUID_16_ENCODE(BT_UUID_TMAS_VAL),
+		      BT_UUID_16_ENCODE(BT_UUID_BASS_VAL)),
 	BT_DATA(BT_DATA_SVC_DATA16, tmas_addata, ARRAY_SIZE(tmas_addata)),
 	BT_DATA(BT_DATA_SVC_DATA16, cas_addata, ARRAY_SIZE(cas_addata)),
 	BT_DATA(BT_DATA_SVC_DATA16, ascs_addata, ARRAY_SIZE(ascs_addata)),
+	/* Scan Delegator: Broadcast Assistant (dien thoai) nhan ra mu nghe duoc Auracast */
+	BT_DATA_BYTES(BT_DATA_SVC_DATA16, BT_UUID_16_ENCODE(BT_UUID_BASS_VAL)),
 	BT_DATA(BT_DATA_SVC_DATA128, ic_addata, ARRAY_SIZE(ic_addata)),
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
@@ -353,6 +362,7 @@ void app_bt_shutdown(void)
 {
 	struct bt_conn *conn = active_conn ? bt_conn_ref(active_conn) : NULL;
 
+	bcast_leave();       /* roi broadcast Auracast (dung BIG, PA) */
 	intercom_shutdown(); /* bao END cho mu ban truoc khi ngat */
 	set_state(HS_SHUTDOWN);
 	if (conn != NULL) {
@@ -656,6 +666,10 @@ void app_gesture(uint8_t key, uint8_t g)
 
 	switch (key) {
 	case KEY_CALL:
+		if (g == G_SEQ_HOLD) {
+			bcast_toggle(); /* Power ngan -> giu Call 2 s: tu tim / roi Auracast */
+			break;
+		}
 		/* Cuoc goi dien thoai uu tien; sau do intercom (Call ngan: huy / ket thuc) */
 		if (state != HS_RINGING && state != HS_IN_CALL && intercom_mode() != ICM_NORMAL) {
 			if (g == G_SHORT) {
@@ -845,14 +859,21 @@ static void handle_event(const struct helmet_evt *evt)
 		break;
 
 	case EVT_IDLE_TIMEOUT:
-		/* Dang co intercom (ke ca tim / cho) thi khong tu tat */
-		if (state == HS_IDLE && intercom_mode() == ICM_NORMAL) {
+		/* Dang co intercom (ke ca tim / cho) hoac dang PHAT Auracast thi khong tu tat.
+		 * Chi dang cho broadcast (nguon tam dung, chua co ma) thi van tu tat nhu IDLE.
+		 */
+		if (state == HS_IDLE && intercom_mode() == ICM_NORMAL &&
+		    bcast_mode() != BC_STREAMING) {
 			power_off(OFF_IDLE);
 		}
 		break;
 
 	case EVT_IC:
 		intercom_handle();
+		break;
+
+	case EVT_BC:
+		bcast_handle();
 		break;
 
 	case EVT_ADV_SLOWDOWN:
@@ -930,6 +951,7 @@ static void heartbeat(void)
 	}
 
 	intercom_log_status();
+	bcast_log_status();
 
 	if (atomic_get(&q_overflow)) {
 		LOG_WRN("app queue overflow: %d events lost", (int)atomic_set(&q_overflow, 0));
@@ -955,6 +977,7 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	media_ctrl_print_status(sh);
 	call_ctrl_print_status(sh);
 	le_audio_print_status(sh);
+	bcast_print(sh);
 	voice_print_status(sh);
 	power_print_status(sh);
 	return 0;
@@ -1200,6 +1223,11 @@ static int cmd_ic(const struct shell *sh, size_t argc, char **argv)
 	return intercom_shell(sh, argc, argv);
 }
 
+static int cmd_bc(const struct shell *sh, size_t argc, char **argv)
+{
+	return bcast_shell(sh, argc, argv);
+}
+
 static int cmd_perf(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(argc);
@@ -1339,6 +1367,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(helmet_cmds,
 	SHELL_CMD_ARG(ic, NULL,
 		      "Intercom: helmet ic [status|master|slave|stop|unpair|tone <Hz>|off]", cmd_ic,
 		      1, 2),
+	SHELL_CMD_ARG(bc, NULL,
+		      "Auracast: helmet bc [status|scan [name]|stop|code <text>|code clear]", cmd_bc,
+		      1, 2),
 	SHELL_CMD_ARG(temp, NULL,
 		      "Temperature: helmet temp [raw|cal|emis <permille>|alarm <C>]", cmd_temp,
 		      1, 2),
@@ -1385,7 +1416,7 @@ int main(void)
 	 * (bt_gatt_service_register, gatt.h). Giu nguyen thu tu cu (TMAS, VCS, MICS, PACS, ASCS)
 	 * de handle khong doi -> hash khop ngay ca lan dau chay ban nay.
 	 */
-	err = bt_tmap_register(BT_TMAP_ROLE_UMR | BT_TMAP_ROLE_CT);
+	err = bt_tmap_register(HELMET_TMAP_ROLES);
 	if (err) {
 		LOG_ERR("TMAP register failed (%d)", err);
 		return err;
@@ -1399,6 +1430,11 @@ int main(void)
 		return err;
 	}
 	err = le_audio_register();
+	if (err) {
+		return err;
+	}
+	/* BASS (Auracast) dang ky sau cung: handle cac dich vu cu khong doi */
+	err = bcast_register();
 	if (err) {
 		return err;
 	}
@@ -1428,6 +1464,10 @@ int main(void)
 	}
 
 	err = le_audio_init();
+	if (err) {
+		return err;
+	}
+	err = bcast_init();
 	if (err) {
 		return err;
 	}

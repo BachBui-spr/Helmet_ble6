@@ -14,9 +14,10 @@
  *   G_VERY_LONG giu toi 3 s
  *   G_REPEAT    Vol+/Vol- giu: lan dau sau 500 ms, sau do moi 250 ms
  *   G_COMBO_VOL Vol+ va Vol- cung nhan (cach nhau <= 200 ms) va giu 5 s
- *   G_SEQ_HOLD  to hop intercom: bo dieu khien goi buttons_arm_seq() khi Power nhan ngan;
- *               lan nhan Vol dau tien trong cua so do duoc "giu lai": giu du 2 s -> G_SEQ_HOLD
- *               (khong lap am luong), nha som -> G_SHORT (1 nac am luong)
+ *   G_SEQ_HOLD  to hop Power -> phim: bo dieu khien goi buttons_arm_seq() khi Power nhan ngan;
+ *               lan nhan Vol/Call dau tien trong cua so do duoc "giu lai": giu du 2 s ->
+ *               G_SEQ_HOLD (Vol: chon vai tro intercom, Call: tu tim / roi Auracast), nha som
+ *               -> G_SHORT (1 nac am luong / Call ngan)
  * Nha trong khoang 600-1000 ms: khong phat gi (tranh nham ngan/giu).
  *
  * Moi lan hen gio tang "the he" (gen) cua phim; su kien hen gio mang gen cu (da bi huy
@@ -54,7 +55,7 @@ enum key_st {
 	ST_HELD2,  /* da phat G_VERY_LONG, cho nha */
 	ST_REPEAT, /* Vol: dang lap */
 	ST_COMBO,  /* Vol+ va Vol- cung nhan */
-	ST_SEQ,    /* Vol nhan trong cua so to hop Power -> Vol, cho du 2 s */
+	ST_SEQ,    /* Vol/Call nhan trong cua so to hop Power -> phim, cho du 2 s */
 	ST_IGNORE, /* bo qua toi lan nha ke tiep */
 };
 
@@ -125,12 +126,12 @@ static void on_press(uint8_t k, uint32_t now)
 		return; /* su kien nhan lap (khong mong doi) */
 	}
 
-	/* To hop intercom: chi lan nhan dau tien sau Power nhan ngan moi duoc tinh */
+	/* To hop Power -> Vol/Call: chi lan nhan dau tien sau Power nhan ngan moi duoc tinh */
 	if (seq_armed) {
 		const bool in_window = (int32_t)(now - seq_until) <= 0;
 
 		seq_armed = false;
-		if (is_vol(k) && in_window) {
+		if ((is_vol(k) || k == KEY_CALL) && in_window) {
 			s->st = ST_SEQ;
 			s->t_down = now;
 			start_timer(k, T_SEQ_HOLD);
@@ -181,10 +182,12 @@ static void on_release(uint8_t k, uint32_t now)
 		emit(k, G_DOUBLE);
 		return;
 	case ST_SEQ:
-		/* Nha truoc 2 s: chi la 1 lan nhan Vol binh thuong */
+		/* Nha truoc 2 s: chi la 1 lan nhan binh thuong (Call giu qua 600 ms: bo qua) */
 		stop_timer(k);
 		s->st = ST_IDLE;
-		emit(k, G_SHORT);
+		if (is_vol(k) || (now - s->t_down) < T_SHORT_MAX) {
+			emit(k, G_SHORT);
+		}
 		return;
 	case ST_COMBO: {
 		const uint8_t other = (k == KEY_VOL_UP) ? KEY_VOL_DOWN : KEY_VOL_UP;

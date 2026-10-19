@@ -157,6 +157,12 @@ static int parse_codec_cfg(const struct bt_audio_codec_cfg *codec_cfg, enum bt_a
 	return 0;
 }
 
+int le_audio_parse_sink_cfg(const struct bt_audio_codec_cfg *codec_cfg,
+			    struct helmet_stream_cfg *out)
+{
+	return parse_codec_cfg(codec_cfg, BT_AUDIO_DIR_SINK, out);
+}
+
 static void log_cfg(const char *what, const char *name, const struct helmet_stream_cfg *cfg)
 {
 	LOG_INF("%s %s: LC3 %u Hz, %u us, %u ch (loc 0x%x), %u B/frame", what, name, cfg->freq_hz,
@@ -453,6 +459,8 @@ static void stream_started(struct bt_bap_stream *stream)
 		return;
 	}
 
+	/* Unicast uu tien hon Auracast: BIS (neu co) thoi dua ra loa, nhuong khe giai ma */
+	bcast_audio_hold(true);
 	audio_out_stream_start(stream_idx(stream), &s->cfg);
 	capture_stream_start(stream_idx(stream), &s->cfg);
 	app_post(EVT_STREAM, BT_AUDIO_DIR_SINK, 1, 0);
@@ -478,6 +486,9 @@ static void stream_end(struct bt_bap_stream *stream, const char *why, uint8_t re
 
 	audio_out_stream_stop(stream_idx(stream));
 	capture_stream_stop(stream_idx(stream));
+	if (!le_audio_is_streaming()) {
+		bcast_audio_hold(false); /* het unicast: BIS dang dong bo (neu co) phat lai */
+	}
 	app_post(EVT_STREAM, BT_AUDIO_DIR_SINK, 0, 0);
 }
 

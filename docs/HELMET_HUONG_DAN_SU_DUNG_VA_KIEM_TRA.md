@@ -316,7 +316,11 @@ Ví dụ thường gặp: bạn đã xóa ghép đôi trên mũ (Vol+ + Vol− 5
   - Gói mất trên sóng được nội suy (PLC) nên không nghe tiếng tách.
   - Lệch clock giữa điện thoại và mũ được bù **từng mẫu**, không nghe thấy.
   - Tần số I2S thật của chip lệch 0.8 % so với danh định (48 kHz → 47 619 Hz). Phần này đã được lấy mẫu lại chính xác nên không còn tiếng tách định kỳ như bản `apps/Helmet` cũ.
-- **Độ trễ trong mũ:** khoảng 45 ms (bộ đệm 1.5 khung + 3 khối I2S).
+- **Độ trễ trong mũ:** khoảng 55 ms (bộ đệm 1.5 khung + 4 khối I2S; từ 19/10/2026 giữ 4 khối thay vì 3 để không bị tách khi gói đến dồn cục).
+- **Hai mũ nghe chung một điện thoại (Auracast):**
+  - Bật "Chia sẻ âm thanh" trên điện thoại (nếu máy hỗ trợ), hoặc trên mũ nhấn **Power ngắn → giữ Call 2 s** để tự tìm broadcast.
+  - Chi tiết, âm báo và cách kiểm thử: [HELMET_AURACAST.md](HELMET_AURACAST.md).
+  - Cuộc gọi (unicast) luôn được ưu tiên hơn broadcast.
 
 ---
 
@@ -478,6 +482,7 @@ Gõ trong phiên `make APP=apps/main rtt`. Mọi lệnh bắt đầu bằng `hel
 | `helmet perf` | Thời gian CPU trung bình/lớn nhất: giải mã, khối ra I2S, DSP giọng, mã hóa | |
 | `helmet capture [on\|off]` | Gửi gói nhạc nhận được về PC (`make audio` tự bật) | |
 | `helmet cispref <1m\|2m> <rtn> <ms>` | Thử nghiệm: QoS đề nghị cho kênh âm thanh | |
+| `helmet bc` / `bc scan [tên]` / `bc stop` / `bc code <mật khẩu>\|clear` | Auracast: trạng thái / tự tìm broadcast / rời / mã broadcast cho cách tự tìm | Xem [HELMET_AURACAST.md](HELMET_AURACAST.md) |
 
 Lệnh Zephyr có sẵn: `kernel uptime`, `kernel thread list`, `kernel thread stacks` (mức dùng stack từng thread).
 

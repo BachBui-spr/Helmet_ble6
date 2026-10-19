@@ -19,6 +19,7 @@
  *   intercom.c   : intercom mu-mu: chon vai tro bang nut, ket noi, ghep doi, noi lai
  *   ic_service.c : Helmet Intercom Service (GATT): server o moi mu, client o master
  *   ic_audio.c   : intercom: BAP Unicast Client o master, LC3 16 kHz hai chieu toi slave
+ *   broadcast_sink.c : Auracast: BAP Broadcast Sink + Scan Delegator (BASS), nghe chung nhac
  */
 
 #ifndef HELMET_H_
@@ -109,6 +110,7 @@ enum helmet_evt_type {
 	EVT_LOW_BATTERY,   /* a = 1 canh bao / 2 phai tat */
 	EVT_POWER_OFF_REQ, /* lenh shell */
 	EVT_IC,            /* intercom: co viec moi trong hang doi rieng cua intercom.c */
+	EVT_BC,            /* Auracast: co su kien moi cho broadcast_sink.c */
 };
 
 /* ---------------- status_led.c ---------------- */
@@ -207,6 +209,10 @@ enum helmet_prompt {
 	PROMPT_IC_END,      /* ket thuc / huy intercom */
 	PROMPT_IC_LOST,     /* mat lien ket, khong noi lai duoc */
 	PROMPT_IC_UNAVAIL,  /* het 60 s khong tim thay / khong duoc ket noi */
+	PROMPT_BC_SEARCH,   /* lap: dang tu tim broadcast Auracast (3 tieng di len) */
+	PROMPT_BC_JOINED,   /* da nhan duoc am thanh broadcast */
+	PROMPT_BC_LEFT,     /* roi broadcast */
+	PROMPT_BC_FAIL,     /* khong tim thay / khong vao duoc broadcast */
 	PROMPT_COUNT,
 };
 
@@ -275,6 +281,9 @@ const char *le_audio_phy_str(uint8_t phy);
 void le_audio_set_qos_pref(uint8_t phy, uint8_t rtn, uint16_t latency_ms);
 void le_audio_get_rx_flags(struct helmet_rx_flags *out);
 void le_audio_print_link_quality(const struct shell *sh);
+/* Codec config LC3 chieu nhan -> helmet_stream_cfg (dung chung cho BIS broadcast) */
+int le_audio_parse_sink_cfg(const struct bt_audio_codec_cfg *codec_cfg,
+			    struct helmet_stream_cfg *out);
 
 /* ---------------- media_ctrl.c ---------------- */
 
@@ -468,5 +477,30 @@ void ic_audio_print(const struct shell *sh);
 int ic_svc_discover(struct bt_conn *conn); /* master: tim HIS + dang ky Event */
 int ic_svc_send(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg);
 bool ic_svc_busy(void); /* con lenh ghi / indicate chua xong */
+
+/* ---------------- broadcast_sink.c (Auracast: BAP Broadcast Sink + Scan Delegator) ---------------- */
+
+enum bc_mode {
+	BC_OFF,         /* khong nghe broadcast */
+	BC_SCAN,        /* tu quet tim broadcast (khong co dien thoai chi duong) */
+	BC_PA_WAIT,     /* cho dong bo PA (PAST tu dien thoai, hoac tu tao) */
+	BC_PA_SYNCED,   /* da dong bo PA: cho BASE, BIGInfo, ma, yeu cau BIS */
+	BC_BIG_SYNCING, /* da xin dong bo BIG, cho controller */
+	BC_STREAMING,   /* dang nhan BIS */
+};
+
+int bcast_register(void); /* truoc bt_enable(): BASS vao GATT */
+int bcast_init(void);     /* sau settings_load() */
+void bcast_handle(void);  /* EVT_BC, chi goi tu thread bo dieu khien */
+void bcast_toggle(void);  /* nut: tu tim broadcast gan nhat, hoac roi broadcast dang nghe */
+void bcast_leave(void);   /* roi broadcast (intercom, tat may); thread bo dieu khien */
+bool bcast_active(void);  /* khac BC_OFF (doc duoc tu moi thread) */
+enum bc_mode bcast_mode(void);
+const char *bcast_mode_str(enum bc_mode m);
+/* le_audio.c (bt_rx): luong sink unicast bat dau (true) / het (false): unicast chiem loa */
+void bcast_audio_hold(bool hold);
+int bcast_shell(const struct shell *sh, size_t argc, char **argv);
+void bcast_print(const struct shell *sh);
+void bcast_log_status(void); /* 1 dong heartbeat khi khac BC_OFF */
 
 #endif /* HELMET_H_ */

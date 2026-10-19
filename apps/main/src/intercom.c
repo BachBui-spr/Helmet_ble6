@@ -552,6 +552,12 @@ void intercom_select(enum ic_role r)
 		return;
 	}
 
+	/* Auracast va intercom loai tru nhau (CPU, radio, khe giai ma): roi broadcast truoc */
+	if (bcast_active()) {
+		LOG_INF("Intercom: leaving Auracast broadcast first");
+		bcast_leave();
+	}
+
 	role = r;
 	reconnecting = false;
 	atomic_set(&restrict_a, 0);

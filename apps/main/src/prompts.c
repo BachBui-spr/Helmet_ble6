@@ -51,6 +51,11 @@ static const struct prompt_seg s_ic_linked[] = {{1047, 60, 30}, {1319, 60, 30}, 
 static const struct prompt_seg s_ic_end[] = {{1568, 60, 30}, {1319, 60, 30}, {1047, 120, 0}};
 static const struct prompt_seg s_ic_lost[] = {{784, 150, 50}, {587, 250, 0}};
 static const struct prompt_seg s_ic_unavail[] = {{587, 100, 80}, {587, 100, 0}};
+/* Auracast: 3 tieng ngan di len (dang tim) / 2 tieng cao (vao) / 2 tieng xuong (roi) */
+static const struct prompt_seg s_bc_search[] = {{988, 50, 30}, {1319, 50, 30}, {1760, 70, 1200}};
+static const struct prompt_seg s_bc_joined[] = {{1319, 60, 20}, {1760, 150, 0}};
+static const struct prompt_seg s_bc_left[] = {{1760, 60, 20}, {1319, 150, 0}};
+static const struct prompt_seg s_bc_fail[] = {{494, 120, 60}, {494, 120, 60}, {494, 120, 0}};
 
 #define DEF(id, nm, s, lp) [id] = {.name = nm, .seg = s, .n = ARRAY_SIZE(s), .loop = lp}
 
@@ -74,6 +79,10 @@ static const struct prompt_def defs[PROMPT_COUNT] = {
 	DEF(PROMPT_IC_END, "ic_end", s_ic_end, false),
 	DEF(PROMPT_IC_LOST, "ic_lost", s_ic_lost, false),
 	DEF(PROMPT_IC_UNAVAIL, "ic_unavail", s_ic_unavail, false),
+	DEF(PROMPT_BC_SEARCH, "bc_search", s_bc_search, true),
+	DEF(PROMPT_BC_JOINED, "bc_joined", s_bc_joined, false),
+	DEF(PROMPT_BC_LEFT, "bc_left", s_bc_left, false),
+	DEF(PROMPT_BC_FAIL, "bc_fail", s_bc_fail, false),
 };
 
 /* Bang sin 1 chu ky + 1 mau de noi suy khong phai quay vong */

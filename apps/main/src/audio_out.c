@@ -44,7 +44,12 @@ LOG_MODULE_REGISTER(audio_out, LOG_LEVEL_INF);
 #define I2S_BLOCK_MAX     (MAX_FRAME_SAMPLES * 2 * sizeof(int16_t))    /* 1920 B */
 
 #define I2S_BLOCK_COUNT   6
-#define I2S_TARGET_BLOCKS 3 /* giu ~30 ms trong hang doi I2S */
+/* Giu 4 khoi (~40 ms) da cap cho I2S: 2 khoi phan cung dang giu (dang phat + ke tiep) +
+ * 2 khoi trong hang doi driver (CONFIG_I2S_NRFX_TX_BLOCK_COUNT = 4) -> thread nay duoc phep
+ * cham ~20 ms truoc khi I2S can ("Next buffers not supplied on time"). 3 khoi chi cho ~10 ms:
+ * khong du khi SDU broadcast den don cuc (do 19/10/2026: tach 1-3 lan/s).
+ */
+#define I2S_TARGET_BLOCKS 4
 #define I2S_START_BLOCKS  2 /* bat dau phat khi da nap 2 khoi */
 #define PUMP_PERIOD_MS    3
 
@@ -967,6 +972,10 @@ static void audio_thread(void *p1, void *p2, void *p3)
 		if (k_msgq_get(&audio_q, &msg, busy ? K_MSEC(PUMP_PERIOD_MS) : K_FOREVER) == 0) {
 			do {
 				handle_msg(&msg);
+				/* Nap I2S sau MOI SDU: nhieu SDU den don cuc (broadcast BN > 1, 2 BIS)
+				 * giai ma lien nhau toi ~17 ms se lam I2S can. pump() rat nhe khi du khoi.
+				 */
+				pump();
 			} while (k_msgq_get(&audio_q, &msg, K_NO_WAIT) == 0);
 		}
 		pump();
