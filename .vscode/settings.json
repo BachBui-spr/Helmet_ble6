@@ -5,7 +5,8 @@
     "nrf-connect.applications": [
         "${workspaceFolder}/apps/main",
         "${workspaceFolder}/apps/Helmet",
-        "${workspaceFolder}/apps/hw_test"
+        "${workspaceFolder}/apps/hw_test",
+        "${workspaceFolder}/apps/bike"
     ],
     "files.associations": {
         "*.overlay": "dts",

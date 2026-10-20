@@ -392,6 +392,11 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	if (bt_conn_get_info(conn, &info) != 0 || info.role == BT_CONN_ROLE_PERIPHERAL) {
 		adv_on = false;
 	}
+	/* Lien ket tam toi Bike hub (lay thong tin vao xe): hub_link.c xu ly */
+	if (hub_link_owned(conn)) {
+		hub_link_connected(conn, err);
+		return;
+	}
 	/* Ket noi mu-mu (master) hoac ung vien khi slave dang cho: intercom.c xu ly */
 	if (intercom_conn_connected(conn, err)) {
 		if (!err) {
@@ -427,6 +432,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	bt_addr_le_to_str(bt_conn_get_dst(conn), addr, sizeof(addr));
 	LOG_INF("Disconnected: %s (reason 0x%02x %s)", addr, reason, bt_hci_err_to_str(reason));
 
+	if (hub_link_owned(conn)) {
+		hub_link_disconnected(conn, reason);
+		return;
+	}
 	if (intercom_conn_owned(conn)) {
 		intercom_conn_disconnected(conn, reason);
 		return;
@@ -479,6 +488,10 @@ static void sec_timeout_handler(struct k_work *work)
 
 static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_security_err err)
 {
+	if (hub_link_owned(conn)) {
+		hub_link_secured(conn, level, err);
+		return;
+	}
 	if (intercom_conn_owned(conn)) {
 		intercom_conn_secured(conn, level, err);
 		return;
@@ -1373,7 +1386,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(helmet_cmds,
 		      "Intercom: helmet ic [status|master|slave|stop|unpair|tone <Hz>|off]", cmd_ic,
 		      1, 2),
 	SHELL_CMD_ARG(bc, NULL,
-		      "Auracast: helmet bc [status|scan [name]|stop|code <text>|code clear]", cmd_bc,
+		      "Auracast: helmet bc [status|scan [name]|stop|forget|code <text>|code clear]", cmd_bc,
 		      1, 2),
 	SHELL_CMD_ARG(trace, NULL, "Diagnostic GATT access log: helmet trace [on|off]", cmd_trace,
 		      1, 1),

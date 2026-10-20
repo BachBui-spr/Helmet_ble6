@@ -20,6 +20,11 @@
  * han (toi khi nguoi dung roi bang nut hoac mat PA). Ma nhap bang "helmet bc code" duoc luu
  * (settings "bcast/code") va dung ngay ca khi dang cho.
  *
+ * Bike hub (apps/bike): trong luc tu tim, thay hub dang mo cua so ghep (Service Data BHS) ->
+ * hub_link.c ket noi hub, doc broadcast ID + dia chi + SID + ma -> vao ngay va LUU ("bcast/hub").
+ * Moi lan bat (va khi broadcast cua hub mat) mu tu dong bo lai theo dia chi + SID da luu, khong
+ * can bam nut, khong go ma. Roi broadcast bang nut thi thoi tu vao lai toi lan ghep / bat sau.
+ *
  * Luong thuc thi: callback Bluetooth (bt_rx) chi chep du lieu + bat co su kien roi
  * app_post(EVT_BC); moi quyet dinh co lenh HCI chay trong bcast_handle() o thread bo dieu khien
  * (main.c), cung thread voi intercom. Rieng duong am thanh (started/stopped/recv cua luong BIS)
@@ -117,6 +122,9 @@ enum {
 	EV_CMD_SCAN,
 	EV_CMD_STOP,
 	EV_USER_CODE, /* "helmet bc code": ma moi, dung ngay neu dang cho ma */
+	EV_HUB_FOUND,  /* luc tu tim: thay Bike hub dang mo cua so ghep */
+	EV_HUB_RESULT, /* hub_link.c: doc Join Info xong (hoac loi) */
+	EV_REJOIN,     /* hen gio: thu tu vao lai broadcast cua hub da ghep */
 };
 
 static atomic_t ev_bits;
@@ -177,6 +185,24 @@ static char name_filter[BC_NAME_LEN];
 static uint8_t user_code[BT_ISO_BROADCAST_CODE_SIZE];
 static bool user_code_set;
 
+/* Bike hub (giu lock) */
+static const uint8_t bhs_uuid_bytes[] = {BHS_UUID_SVC_VAL};
+static bt_addr_le_t hub_cand;    /* bo quang ba cua so ghep cua hub */
+static atomic_t hub_found;       /* da bao EV_HUB_FOUND trong lan quet nay */
+static uint8_t hub_info[BHS_JOIN_INFO_LEN];
+static int hub_err;
+
+/* Hub da ghep, luu "bcast/hub" */
+struct bc_saved_hub {
+	uint32_t broadcast_id;
+	bt_addr_le_t addr;
+	uint8_t sid;
+	uint8_t code_len;
+	uint8_t code[BT_ISO_BROADCAST_CODE_SIZE];
+};
+static struct bc_saved_hub saved;
+static bool saved_valid;
+
 /* ---------------- Trang thai (chi thread bo dieu khien) ---------------- */
 
 static enum bc_mode mode;
@@ -201,6 +227,9 @@ static bool retry_wait;
 static bool warned;
 static bool big_logged;    /* da ghi thong so BIG cua phien nay */
 static bool search_prompt; /* am "dang tim" (lap) dang phat */
+static bool quiet;         /* phien tu vao lai: khong bao am that bai */
+static bool hub_retried;   /* da xoa khoa cu + ghep lai mot lan trong lan bam nut nay */
+static bool rejoin_enabled; /* co hub da ghep va nguoi dung chua roi broadcast bang nut */
 
 /* ---------------- Luong BIS -> loa ---------------- */
 
@@ -240,6 +269,17 @@ static K_TIMER_DEFINE(t_phase, t_phase_fn, NULL);
 static K_TIMER_DEFINE(t_choose, t_choose_fn, NULL);
 static K_TIMER_DEFINE(t_retry, t_retry_fn, NULL);
 
+static void t_rejoin_fn(struct k_timer *t)
+{
+	ARG_UNUSED(t);
+	post(EV_REJOIN);
+}
+
+static K_TIMER_DEFINE(t_rejoin, t_rejoin_fn, NULL);
+
+#define BC_REJOIN_FIRST_S 5  /* sau khi bat may */
+#define BC_REJOIN_RETRY_S 30 /* hub chua bat / ngoai tam: thu lai */
+
 const char *bcast_mode_str(enum bc_mode m)
 {
 	switch (m) {
@@ -247,6 +287,8 @@ const char *bcast_mode_str(enum bc_mode m)
 		return "OFF";
 	case BC_SCAN:
 		return "SCAN";
+	case BC_HUB_LINK:
+		return "HUB_LINK";
 	case BC_PA_WAIT:
 		return "PA_WAIT";
 	case BC_PA_SYNCED:
@@ -729,6 +771,7 @@ static bool contains_ci(const char *str, const char *sub)
 struct scan_parse {
 	bool found;
 	bool bname;
+	bool hub; /* Bike hub dang mo cua so ghep */
 	uint32_t broadcast_id;
 	char name[BC_NAME_LEN];
 };
@@ -754,6 +797,14 @@ static bool scan_ad_cb(struct bt_data *data, void *user_data)
 			p->found = true;
 		}
 		break;
+	case BT_DATA_SVC_DATA128:
+		/* Bike hub: {BHS UUID, ver, co} - co "dang ghep" */
+		if (data->data_len >= sizeof(bhs_uuid_bytes) + 2 &&
+		    memcmp(data->data, bhs_uuid_bytes, sizeof(bhs_uuid_bytes)) == 0 &&
+		    (data->data[sizeof(bhs_uuid_bytes) + 1] & BHS_FLAG_PAIRING)) {
+			p->hub = true;
+		}
+		break;
 	case BT_DATA_BROADCAST_NAME:
 		copy_name(p->name, data);
 		p->bname = true;
@@ -777,15 +828,26 @@ static void scan_recv(const struct bt_le_scan_recv_info *info, struct net_buf_si
 	k_spinlock_key_t key;
 	bool first;
 
-	/* Chi bo quang ba co periodic advertising (interval != 0) moi co the la broadcast */
-	if (atomic_get(&mode_a) != BC_SCAN || info->interval == 0U) {
+	if (atomic_get(&mode_a) != BC_SCAN) {
 		return;
 	}
-
 	net_buf_simple_save(ad, &st);
 	bt_data_parse(ad, scan_ad_cb, &p);
 	net_buf_simple_restore(ad, &st);
-	if (!p.found) {
+
+	/* Bike hub dang mo cua so ghep (bo quang ba co the ket noi): uu tien hon moi broadcast */
+	if (p.hub && (info->adv_props & BT_GAP_ADV_PROP_CONNECTABLE)) {
+		if (!atomic_set(&hub_found, 1)) {
+			key = k_spin_lock(&lock);
+			bt_addr_le_copy(&hub_cand, info->addr);
+			k_spin_unlock(&lock, key);
+			post(EV_HUB_FOUND);
+		}
+		return;
+	}
+
+	/* Chi bo quang ba co periodic advertising (interval != 0) moi co the la broadcast */
+	if (info->interval == 0U || !p.found) {
 		return;
 	}
 
@@ -880,6 +942,9 @@ static void teardown(void)
 	if (mode == BC_SCAN) {
 		(void)bt_le_scan_stop();
 	}
+	if (mode == BC_HUB_LINK) {
+		hub_link_cancel();
+	}
 
 	key = k_spin_lock(&lock);
 	want_create = false;
@@ -936,12 +1001,19 @@ static void end_session(enum helmet_prompt p, bool play)
 	memset(want_bis, 0, sizeof(want_bis));
 	want_nsg = 0;
 	set_mode(BC_OFF);
+	if (quiet && p == PROMPT_BC_FAIL) {
+		play = false; /* tu vao lai that bai (hub chua bat): im lang, thu lai sau */
+	}
 	if (play) {
 		audio_out_prompt(p);
 	} else if (search_prompt) {
 		audio_out_prompt_stop(); /* chi dung am "dang tim" dang lap, khong cat am khac */
 	}
 	search_prompt = false;
+	quiet = false;
+	if (rejoin_enabled && saved_valid) {
+		k_timer_start(&t_rejoin, K_SECONDS(BC_REJOIN_RETRY_S), K_NO_WAIT);
+	}
 	power_activity(); /* het nghe: hen gio tu tat chay lai (neu dang IDLE) */
 }
 
@@ -1088,6 +1160,9 @@ static void start_scan(void)
 	code_ok = user_code_set;
 	memcpy(code, user_code, sizeof(code));
 	k_spin_unlock(&lock, key);
+	atomic_set(&hub_found, 0);
+	quiet = false;
+	k_timer_stop(&t_rejoin);
 
 	set_mode(BC_SCAN); /* truoc khi quet: scan_recv kiem tra mode_a */
 	err = bt_le_scan_start(&param, NULL);
@@ -1200,11 +1275,158 @@ static void on_scan_choose(void)
 		return;
 	}
 
+	if (saved_valid && tgt.broadcast_id == saved.broadcast_id && saved.code_len > 0) {
+		/* Broadcast cua hub da ghep: dung ma da luu, khong can go */
+		memcpy(code, saved.code, sizeof(code));
+		code_ok = true;
+	}
 	bt_addr_le_to_str(&tgt.addr, addr, sizeof(addr));
 	LOG_INF("Joining broadcast \"%s\" (ID 0x%06x, %s SID %u, RSSI %d)", tgt.name,
 		tgt.broadcast_id, addr, tgt.sid, rssi);
 	if (pa_create() != 0) {
 		end_session(PROMPT_BC_FAIL, true);
+	}
+}
+
+/* ---------------- Bike hub ---------------- */
+
+/* Goi tu hub_link.c (bt_rx) */
+void bcast_hub_result(int err, const uint8_t *info, uint16_t len)
+{
+	k_spinlock_key_t key = k_spin_lock(&lock);
+
+	hub_err = err;
+	memset(hub_info, 0, sizeof(hub_info));
+	if (err == 0 && info != NULL) {
+		memcpy(hub_info, info, MIN(len, sizeof(hub_info)));
+	}
+	k_spin_unlock(&lock, key);
+	post(EV_HUB_RESULT);
+}
+
+static void on_hub_found(void)
+{
+	char str[BT_ADDR_LE_STR_LEN];
+	bt_addr_le_t addr;
+	k_spinlock_key_t key;
+	int err;
+
+	if (mode != BC_SCAN) {
+		return;
+	}
+	(void)bt_le_scan_stop();
+	k_timer_stop(&t_choose);
+	key = k_spin_lock(&lock);
+	bt_addr_le_copy(&addr, &hub_cand);
+	k_spin_unlock(&lock, key);
+
+	bt_addr_le_to_str(&addr, str, sizeof(str));
+	LOG_INF("Bike hub %s is pairing - getting broadcast info", str);
+	set_mode(BC_HUB_LINK);
+	err = hub_link_start(&addr);
+	if (err) {
+		LOG_WRN("Hub link start failed (%d)", err);
+		end_session(PROMPT_BC_FAIL, true);
+	}
+}
+
+/* Bat dau dong bo broadcast cua hub (sau khi ghep, hoac tu vao lai) */
+static int join_saved_hub(void)
+{
+	assisted = false;
+	retries = 0;
+	reset_media();
+	memset(&tgt, 0, sizeof(tgt));
+	bt_addr_le_copy(&tgt.addr, &saved.addr);
+	tgt.sid = saved.sid;
+	tgt.broadcast_id = saved.broadcast_id;
+	tgt.pa_interval = BT_BAP_PA_INTERVAL_UNKNOWN;
+	strncpy(tgt.name, "Bike Audio", sizeof(tgt.name) - 1);
+	code_ok = saved.code_len > 0;
+	memset(code, 0, sizeof(code));
+	memcpy(code, saved.code, saved.code_len);
+	return pa_create();
+}
+
+static void on_hub_result(void)
+{
+	struct bc_saved_hub h = {0};
+	k_spinlock_key_t key;
+	uint8_t info[BHS_JOIN_INFO_LEN];
+	int err;
+
+	if (mode != BC_HUB_LINK) {
+		return;
+	}
+	key = k_spin_lock(&lock);
+	err = hub_err;
+	memcpy(info, hub_info, sizeof(info));
+	k_spin_unlock(&lock, key);
+
+	if (err == 0 && (info[0] != BHS_PROTO_VER || info[12] > BT_ISO_BROADCAST_CODE_SIZE)) {
+		err = -EPROTO;
+	}
+	if (err == -EAGAIN && !hub_retried) {
+		bt_addr_le_t stale;
+
+		/* Khoa ghep doi cu lech voi hub: xoa dung hub do, quet + ghep lai (cua so con mo) */
+		hub_retried = true;
+		if (hub_link_stale_peer(&stale)) {
+			char str[BT_ADDR_LE_STR_LEN];
+
+			bt_addr_le_to_str(&stale, str, sizeof(str));
+			LOG_INF("Stale bond with bike hub %s - deleting it and pairing again", str);
+			(void)bt_unpair(BT_ID_DEFAULT, &stale);
+		}
+		teardown();
+		set_mode(BC_OFF);
+		start_scan();
+		return;
+	}
+	if (err) {
+		LOG_WRN("Pairing with bike hub failed (%d)", err);
+		end_session(PROMPT_BC_FAIL, true);
+		return;
+	}
+
+	h.broadcast_id = sys_get_le24(&info[1]);
+	h.addr.type = info[4];
+	memcpy(h.addr.a.val, &info[5], sizeof(h.addr.a.val));
+	h.sid = info[11];
+	h.code_len = info[12];
+	memcpy(h.code, &info[13], h.code_len);
+	saved = h;
+	saved_valid = true;
+	rejoin_enabled = true;
+	(void)settings_save_one("bcast/hub", &saved, sizeof(saved));
+	LOG_INF("Paired with bike hub: broadcast 0x%06x, SID %u, %s - saved", h.broadcast_id, h.sid,
+		h.code_len ? "encrypted" : "open");
+
+	/* Hub_link tu ngat; vao broadcast ngay (PA theo dia chi + SID, khong can quet) */
+	if (join_saved_hub() != 0) {
+		end_session(PROMPT_BC_FAIL, true);
+	}
+}
+
+/* Hen gio: tu vao lai broadcast cua hub da ghep (bat may, hub tat roi bat lai, ra ngoai tam) */
+static void on_rejoin(void)
+{
+	const enum helmet_state s = app_state();
+
+	if (!saved_valid || !rejoin_enabled || mode != BC_OFF) {
+		return;
+	}
+	/* Dang goi / intercom / dang nghe nhac unicast tu dien thoai: chua quet (tranh tranh radio) */
+	if (intercom_mode() != ICM_NORMAL || s == HS_RINGING || s == HS_IN_CALL ||
+	    s == HS_SHUTDOWN || s == HS_BOOT || le_audio_is_streaming()) {
+		k_timer_start(&t_rejoin, K_SECONDS(BC_REJOIN_RETRY_S), K_NO_WAIT);
+		return;
+	}
+	LOG_INF("Auto-joining paired bike hub broadcast 0x%06x", saved.broadcast_id);
+	if (join_saved_hub() == 0) {
+		quiet = true; /* hub chua bat thi that bai im lang, thu lai sau */
+	} else {
+		k_timer_start(&t_rejoin, K_SECONDS(BC_REJOIN_RETRY_S), K_NO_WAIT);
 	}
 }
 
@@ -1682,8 +1904,17 @@ void bcast_handle(void)
 		}
 		start_scan();
 	}
+	if (ev & BIT(EV_HUB_FOUND)) {
+		on_hub_found();
+	}
+	if (ev & BIT(EV_HUB_RESULT)) {
+		on_hub_result();
+	}
 	if (ev & BIT(EV_T_CHOOSE)) {
 		on_scan_choose();
+	}
+	if (ev & BIT(EV_REJOIN)) {
+		on_rejoin();
 	}
 	if (ev & BIT(EV_PA_SYNCED)) {
 		on_pa_synced();
@@ -1706,6 +1937,14 @@ static int bc_settings_set(const char *name, size_t len, settings_read_cb read_c
 	k_spinlock_key_t key;
 	const char *next;
 
+	if (settings_name_steq(name, "hub", &next) && next == NULL) {
+		if (len != sizeof(saved) || read_cb(cb_arg, &saved, sizeof(saved)) != sizeof(saved) ||
+		    saved.code_len > BT_ISO_BROADCAST_CODE_SIZE) {
+			return -EINVAL;
+		}
+		saved_valid = true;
+		return 0;
+	}
 	if (!settings_name_steq(name, "code", &next) || next != NULL) {
 		return -ENOENT;
 	}
@@ -1729,12 +1968,15 @@ void bcast_toggle(void)
 
 	if (mode != BC_OFF) {
 		LOG_INF("Auracast: leaving broadcast (button)");
+		rejoin_enabled = false; /* nguoi dung roi: thoi tu vao lai toi lan ghep / bat sau */
+		k_timer_stop(&t_rejoin);
 		end_session(PROMPT_BC_LEFT, true);
 		return;
 	}
 	key = k_spin_lock(&lock);
 	name_filter[0] = '\0'; /* nut: broadcast manh nhat, khong loc ten */
 	k_spin_unlock(&lock, key);
+	hub_retried = false;
 	start_scan();
 }
 
@@ -1777,6 +2019,13 @@ int bcast_init(void)
 	LOG_INF("Auracast sink: BASS (%u receive states), up to %u BIS, PAST %s",
 		CONFIG_BT_BAP_SCAN_DELEGATOR_RECV_STATE_COUNT, BC_STREAMS,
 		IS_ENABLED(CONFIG_BT_PER_ADV_SYNC_TRANSFER_RECEIVER) ? "yes" : "no");
+	if (saved_valid) {
+		/* settings_load() da chay: co hub da ghep -> tu vao lai sau vai giay */
+		rejoin_enabled = true;
+		k_timer_start(&t_rejoin, K_SECONDS(BC_REJOIN_FIRST_S), K_NO_WAIT);
+		LOG_INF("Paired bike hub: broadcast 0x%06x - auto-join in %d s", saved.broadcast_id,
+			BC_REJOIN_FIRST_S);
+	}
 	return 0;
 }
 
@@ -1786,6 +2035,11 @@ void bcast_print(const struct shell *sh)
 {
 	char addr[BT_ADDR_LE_STR_LEN];
 
+	if (saved_valid) {
+		shell_print(sh, "Bike hub  : paired, broadcast 0x%06x, SID %u, %s, auto-join %s",
+			    saved.broadcast_id, saved.sid, saved.code_len ? "encrypted" : "open",
+			    rejoin_enabled ? "on" : "off (left by button)");
+	}
 	if (mode == BC_OFF) {
 		shell_print(sh, "Auracast  : off");
 		return;
@@ -1846,6 +2100,14 @@ int bcast_shell(const struct shell *sh, size_t argc, char **argv)
 		post(EV_CMD_STOP);
 		return 0;
 	}
+	if (strcmp(argv[1], "forget") == 0) {
+		saved_valid = false;
+		rejoin_enabled = false;
+		k_timer_stop(&t_rejoin);
+		(void)settings_delete("bcast/hub");
+		shell_print(sh, "Paired bike hub forgotten (no more auto-join)");
+		return 0;
+	}
 	if (strcmp(argv[1], "code") == 0 && argc > 2) {
 		const size_t n = strlen(argv[2]);
 		int err;
@@ -1876,6 +2138,6 @@ int bcast_shell(const struct shell *sh, size_t argc, char **argv)
 		return 0;
 	}
 
-	shell_error(sh, "usage: helmet bc [status|scan [name]|stop|code <text>|code clear]");
+	shell_error(sh, "usage: helmet bc [status|scan [name]|stop|forget|code <text>|code clear]");
 	return -EINVAL;
 }

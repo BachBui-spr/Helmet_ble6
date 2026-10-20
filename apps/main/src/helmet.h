@@ -21,6 +21,7 @@
  *   ic_audio.c   : intercom: BAP Unicast Client o master, LC3 16 kHz hai chieu toi slave
  *   broadcast_sink.c : Auracast: BAP Broadcast Sink + Scan Delegator (BASS), nghe chung nhac
  *   gatt_trace.c : CHAN DOAN tam thoi: log moi lan thiet bi kia doc / ghi thuoc tinh GATT
+ *   hub_link.c   : lien ket tam toi Bike hub (apps/bike): lay broadcast ID / dia chi / ma qua BHS
  */
 
 #ifndef HELMET_H_
@@ -484,6 +485,7 @@ bool ic_svc_busy(void); /* con lenh ghi / indicate chua xong */
 enum bc_mode {
 	BC_OFF,         /* khong nghe broadcast */
 	BC_SCAN,        /* tu quet tim broadcast (khong co dien thoai chi duong) */
+	BC_HUB_LINK,    /* dang ket noi Bike hub de lay thong tin vao xe (ghep bang nut) */
 	BC_PA_WAIT,     /* cho dong bo PA (PAST tu dien thoai, hoac tu tao) */
 	BC_PA_SYNCED,   /* da dong bo PA: cho BASE, BIGInfo, ma, yeu cau BIS */
 	BC_BIG_SYNCING, /* da xin dong bo BIG, cho controller */
@@ -503,6 +505,28 @@ void bcast_audio_hold(bool hold);
 int bcast_shell(const struct shell *sh, size_t argc, char **argv);
 void bcast_print(const struct shell *sh);
 void bcast_log_status(void); /* 1 dong heartbeat khi khac BC_OFF */
+/* hub_link.c (bt_rx): ket qua doc Join Info. err != 0: that bai */
+void bcast_hub_result(int err, const uint8_t *info, uint16_t len);
+
+/* ---------------- hub_link.c: Bike hub (cung UUID / dinh dang voi apps/bike/src/bhs.c) ---------------- */
+
+#define BHS_UUID_SVC_VAL  BT_UUID_128_ENCODE(0x0eed0101, 0x080c, 0x4225, 0xa3d0, 0xf91ce86a80c2)
+#define BHS_UUID_JOIN_VAL BT_UUID_128_ENCODE(0x0eed0102, 0x080c, 0x4225, 0xa3d0, 0xf91ce86a80c2)
+#define BHS_PROTO_VER     1
+#define BHS_FLAG_PAIRING  BIT(0)
+/* [0] ver, [1..3] broadcast ID, [4] kieu dia chi, [5..10] dia chi, [11] SID, [12] do dai ma,
+ * [13..28] ma broadcast
+ */
+#define BHS_JOIN_INFO_LEN 29
+
+int hub_link_start(const bt_addr_le_t *addr);
+void hub_link_cancel(void);
+bool hub_link_owned(const struct bt_conn *conn);
+void hub_link_connected(struct bt_conn *conn, uint8_t err);
+void hub_link_secured(struct bt_conn *conn, bt_security_t level, enum bt_security_err err);
+void hub_link_disconnected(struct bt_conn *conn, uint8_t reason);
+/* Sau ket qua -EAGAIN: dia chi hub co khoa ghep doi cu (de xoa). false: khong co */
+bool hub_link_stale_peer(bt_addr_le_t *out);
 
 /* ---------------- gatt_trace.c (chan doan tam thoi) ---------------- */
 int gatt_trace_init(void); /* sau bt_enable() */

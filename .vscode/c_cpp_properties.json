@@ -5,7 +5,8 @@
             "compileCommands": [
                 "${workspaceFolder}/build/main/main/compile_commands.json",
                 "${workspaceFolder}/build/Helmet/Helmet/compile_commands.json",
-                "${workspaceFolder}/build/hw_test/hw_test/compile_commands.json"
+                "${workspaceFolder}/build/hw_test/hw_test/compile_commands.json",
+                "${workspaceFolder}/build/bike/bike/compile_commands.json"
             ],
             "compilerPath": "${env:HOME}/ncs/toolchains/fbf7391cab/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
             "compilerArgs": [

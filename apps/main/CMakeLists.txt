@@ -24,6 +24,7 @@ target_sources(app PRIVATE
   src/ic_audio.c
   src/broadcast_sink.c
   src/gatt_trace.c
+  src/hub_link.c
 )
 
 # Cac file chay moi 10 ms trong cuoc goi: bien dich toi uu toc do thay cho -Os mac dinh cua
