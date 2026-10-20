@@ -1200,6 +1200,11 @@ static int cmd_ic(const struct shell *sh, size_t argc, char **argv)
 	return intercom_shell(sh, argc, argv);
 }
 
+static int cmd_cs(const struct shell *sh, size_t argc, char **argv)
+{
+	return ranging_shell(sh, argc, argv);
+}
+
 static int cmd_perf(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(argc);
@@ -1339,6 +1344,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(helmet_cmds,
 	SHELL_CMD_ARG(ic, NULL,
 		      "Intercom: helmet ic [status|master|slave|stop|unpair|tone <Hz>|off]", cmd_ic,
 		      1, 2),
+	SHELL_CMD_ARG(cs, NULL,
+		      "Channel Sounding (distance in intercom call): helmet cs [ch <1|2|4> | "
+		      "period <ms>]",
+		      cmd_cs, 1, 2),
 	SHELL_CMD_ARG(temp, NULL,
 		      "Temperature: helmet temp [raw|cal|emis <permille>|alarm <C>]", cmd_temp,
 		      1, 2),

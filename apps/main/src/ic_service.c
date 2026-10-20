@@ -5,6 +5,8 @@
  *   Control Point (Write, can ma hoa): master -> slave
  *   Event         (Indicate, can ma hoa): slave -> master
  *   Tin nhan 4 byte: [op][session][arg][arg2] (enum ic_op trong helmet.h)
+ *   IC_OP_RANGE (khoang cach CS, master -> slave) chi de hien thi: ranging.c xu ly ngay, khong
+ *   qua hang doi intercom.
  *
  * Dich vu tinh (BT_GATT_SERVICE_DEFINE): co san trong co so du lieu GATT truoc settings_load(),
  * khong lam lech Database Hash giua cac lan khoi dong.
@@ -20,6 +22,7 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/byteorder.h>
 
 #include "helmet.h"
 
@@ -44,6 +47,10 @@ static ssize_t cp_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
 	}
 	if (len != IC_MSG_LEN) {
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+	if (p[0] == IC_OP_RANGE) {
+		ranging_on_peer_report(sys_get_le16(&p[2]));
+		return len;
 	}
 	intercom_on_msg(conn, p[0], p[2]);
 	return len;
@@ -215,7 +222,12 @@ static void wr_done(struct bt_conn *conn, uint8_t err, struct bt_gatt_write_para
 
 int ic_svc_send(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg)
 {
-	const uint8_t msg[IC_MSG_LEN] = {op, 0, arg, 0};
+	return ic_svc_send2(conn, to_slave, op, arg, 0);
+}
+
+int ic_svc_send2(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg, uint8_t arg2)
+{
+	const uint8_t msg[IC_MSG_LEN] = {op, 0, arg, arg2};
 	int err;
 
 	if (to_slave) {

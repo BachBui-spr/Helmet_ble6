@@ -6,6 +6,9 @@
  * Buoc S2: ngay khi LINKED, master mo duong am thanh hai chieu (ic_audio.c, BAP Unicast Client);
  * chu ky ket noi giu 15 ms toi khi luong chay roi moi doi 60 ms.
  *
+ * Do khoang cach (ranging.c, Channel Sounding): slave bat vai tro phan xa ngay khi LINKED;
+ * master bat dau do khi am thanh da chay va ACL doi sang 60 ms (tranh dung thu tuc LL).
+ *
  * Binh thuong mu khong co vai tro. Power nhan ngan roi giu Vol+ 2 s -> MASTER, giu Vol- 2 s
  * -> SLAVE. Vai tro chi nam trong RAM: ket thuc / tat nguon -> ve binh thuong. Bond van luu.
  *
@@ -503,6 +506,9 @@ static void linked(void)
 	for (int i = 0; i < IC_MAX_CAND; i++) {
 		release_cand(i);
 	}
+	if (role == IC_ROLE_SLAVE) {
+		ranging_start(link, false); /* phan xa: san sang truoc khi master do */
+	}
 }
 
 static void end_link(uint8_t reason)
@@ -964,6 +970,8 @@ void intercom_handle(void)
 				(void)bt_conn_le_param_update(
 					link,
 					BT_LE_CONN_PARAM(IC_LINKED_INT, IC_LINKED_INT, 0, IC_SUP_TIMEOUT));
+				/* Do khoang cach: bat dau khi ACL doi xong chu ky 60 ms */
+				ranging_start(link, true);
 			}
 			break;
 		default:
@@ -1093,6 +1101,7 @@ void intercom_log_status(void)
 		role == IC_ROLE_MASTER ? ic_audio_state_str()
 				       : (le_audio_is_streaming() ? "STREAMING (as slave)" : "idle"),
 		reconnecting ? ", reconnecting" : "");
+	ranging_log_status();
 }
 
 int intercom_shell(const struct shell *sh, size_t argc, char **argv)

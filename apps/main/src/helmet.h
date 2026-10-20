@@ -412,6 +412,7 @@ void capture_print_status(const struct shell *sh);
 enum ic_op {
 	IC_OP_HELLO = 0x01, /* arg = phien ban giao thuc */
 	IC_OP_END = 0x14,   /* arg = enum ic_reason */
+	IC_OP_RANGE = 0x30, /* master -> slave: khoang cach do bang CS, cm = arg | arg2 << 8 */
 };
 
 enum ic_reason {
@@ -467,6 +468,13 @@ void ic_audio_print(const struct shell *sh);
 /* ic_service.c */
 int ic_svc_discover(struct bt_conn *conn); /* master: tim HIS + dang ky Event */
 int ic_svc_send(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg);
+int ic_svc_send2(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg, uint8_t arg2);
 bool ic_svc_busy(void); /* con lenh ghi / indicate chua xong */
+
+/* ranging.c - do khoang cach mu-mu bang Channel Sounding khi dang goi intercom */
+void ranging_start(struct bt_conn *conn, bool initiator); /* thread bo dieu khien */
+void ranging_on_peer_report(uint16_t cm);                  /* slave, tu ic_service.c (bt_rx) */
+void ranging_log_status(void);                             /* 1 dong heartbeat khi dang do */
+int ranging_shell(const struct shell *sh, size_t argc, char **argv);
 
 #endif /* HELMET_H_ */
