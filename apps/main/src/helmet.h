@@ -20,6 +20,7 @@
  *   ic_service.c : Helmet Intercom Service (GATT): server o moi mu, client o master
  *   ic_audio.c   : intercom: BAP Unicast Client o master, LC3 16 kHz hai chieu toi slave
  *   broadcast_sink.c : Auracast: BAP Broadcast Sink + Scan Delegator (BASS), nghe chung nhac
+ *   gatt_trace.c : CHAN DOAN tam thoi: log moi lan thiet bi kia doc / ghi thuoc tinh GATT
  */
 
 #ifndef HELMET_H_
@@ -502,5 +503,9 @@ void bcast_audio_hold(bool hold);
 int bcast_shell(const struct shell *sh, size_t argc, char **argv);
 void bcast_print(const struct shell *sh);
 void bcast_log_status(void); /* 1 dong heartbeat khi khac BC_OFF */
+
+/* ---------------- gatt_trace.c (chan doan tam thoi) ---------------- */
+int gatt_trace_init(void); /* sau bt_enable() */
+int gatt_trace_shell(const struct shell *sh, size_t argc, char **argv);
 
 #endif /* HELMET_H_ */

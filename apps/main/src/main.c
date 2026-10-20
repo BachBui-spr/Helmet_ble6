@@ -1223,6 +1223,11 @@ static int cmd_ic(const struct shell *sh, size_t argc, char **argv)
 	return intercom_shell(sh, argc, argv);
 }
 
+static int cmd_trace(const struct shell *sh, size_t argc, char **argv)
+{
+	return gatt_trace_shell(sh, argc, argv);
+}
+
 static int cmd_bc(const struct shell *sh, size_t argc, char **argv)
 {
 	return bcast_shell(sh, argc, argv);
@@ -1370,6 +1375,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(helmet_cmds,
 	SHELL_CMD_ARG(bc, NULL,
 		      "Auracast: helmet bc [status|scan [name]|stop|code <text>|code clear]", cmd_bc,
 		      1, 2),
+	SHELL_CMD_ARG(trace, NULL, "Diagnostic GATT access log: helmet trace [on|off]", cmd_trace,
+		      1, 1),
 	SHELL_CMD_ARG(temp, NULL,
 		      "Temperature: helmet temp [raw|cal|emis <permille>|alarm <C>]", cmd_temp,
 		      1, 2),
@@ -1451,6 +1458,7 @@ int main(void)
 	}
 	saved_cfg = helmet_cfg;
 	bt_conn_auth_info_cb_register(&auth_info_cb);
+	(void)gatt_trace_init(); /* chan doan tam thoi: dien thoai doc / ghi gi */
 	(void)intercom_init();
 
 	err = media_ctrl_init();
