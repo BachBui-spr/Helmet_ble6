@@ -6,6 +6,8 @@ Nhánh `feature/Sounding-Channel` (tách từ `main`, có intercom, chưa có Au
 
 - Khi hai mũ **đang gọi intercom**, đo khoảng cách giữa hai mũ bằng Channel Sounding (CS) và **in ra log trên cả hai mũ**, khoảng 1 lần mỗi giây.
 - Chưa làm: âm báo hoặc đèn theo khoảng cách, đo khi không gọi.
+- Phần này **chỉ để thử** CS trong intercom. Chế độ Định vị (khoảng cách tới xe và mũ kia, không cần intercom) là phần riêng, xem [HELMET_NAV_DINH_VI.md](HELMET_NAV_DINH_VI.md). Bật Định vị thì intercom kết thúc.
+- 22/10/2026: bỏ điều kiện `t_ip2_ipt_times_supported != 0` khi đọc khả năng CS của mũ kia. Trường này chỉ có trong sự kiện phiên bản 2; Zephyr đặt bằng 0 khi controller gửi phiên bản 1, nên trên mạch nó chặn nhầm. Giờ làm như mẫu `ipt_initiator`: chỉ cần bên kia phản xạ được.
 
 ## 2. Cách đo: CS Inline PCT Transfer (IPT)
 
@@ -60,15 +62,18 @@ Master chỉ bắt đầu CS sau khi đã đổi chu kỳ ACL, để không ch�
 |---|---|---|
 | `BT_CHANNEL_SOUNDING` | y | Host CS (EXPERIMENTAL) |
 | `BT_CTLR_SDC_CS_ROLE_BOTH` | y | Hai mũ cùng firmware: master khởi tạo, slave phản xạ |
+| `BT_CTLR_SDC_CS_COUNT` | 2 | Chế độ Định vị đo trên 2 liên kết cùng lúc (tới xe và tới mũ kia) |
 | `BT_CTLR_SDC_CS_MAX_ANTENNA_PATHS`, `NUM_ANTENNAS` | 1 | Module có 1 ăng-ten |
 | `BT_CTLR_SDC_CS_STEP_MODE3`, `CHANNEL_SOUNDING_TEST` | n | Bớt RAM / FLASH |
 | `BT_CTLR_EXTENDED_FEAT_SET` | y | Bắt buộc cho IPT |
 | `BT_TRANSMIT_POWER_CONTROL` | y | Cho phép CS và ACL dùng PHY khác nhau |
-| `BT_CHANNEL_SOUNDING_REASSEMBLY_BUFFER_SIZE` | 2000 | Mỗi bước mode 2 khoảng 12 B. Mặc định 5600 |
+| `BT_CHANNEL_SOUNDING_REASSEMBLY_BUFFER_CNT` / `SIZE` | 2 / 1000 | Một bộ đệm cho mỗi thủ tục chạy song song (chế độ Định vị có 2). Mode 2, 1 đường ăng-ten khoảng 8 B mỗi bước, subevent ≤ 5 ms khoảng 350 B. Mặc định 1 / 5600 |
 | `BT_CS_DE`, `BT_CS_DE_512_NFFT` | y | IFFT 512 điểm, bộ nhớ tạm 4 KB (1024 điểm cần 8 KB) |
 | `NRF_RRAM_WRITE_BUFFER_SIZE` | 1 | Mỗi lần ghi RRAM chỉ cần 0,6 ms radio trống thay vì 8,1 ms. Khi CIS hoặc CS chạy theo chu kỳ 10 ms thì không bao giờ có khoảng trống 8,1 ms (lỗi đã gặp trên hub) |
 
 Build ngày 20/10/2026: **FLASH 651 692 B (41,8 %), RAM 249 276 B (95,1 %)**. Trước khi thêm CS: 37,5 % / 90,3 %.
+
+Build ngày 22/10/2026 có chế độ Định vị bản đơn giản (4 kết nối, 2 liên kết CS, `capture.c` thành tuỳ chọn `CONFIG_HELMET_CAPTURE`, mặc định tắt): **FLASH 42,5 %, RAM 249 104 B (95,0 %)**.
 
 Phần RAM tăng thêm: `iq` 4096 B, bộ đệm ráp 2000 B, phần CS trong `sdc_mempool`.
 

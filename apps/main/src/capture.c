@@ -9,6 +9,9 @@
  * - Che do NO_BLOCK_SKIP: bo dem day (PC doc khong kip / khong cam J-Link) thi bo ca ban ghi,
  *   khong bao gio lam cham luong nhan. PC thay so thu tu ban ghi nhay coc -> bu bang PLC.
  * - Mac dinh TAT; bat bang "helmet capture on" (script tu gui lenh nay).
+ * - Chi co khi build voi EXTRA=-DCONFIG_HELMET_CAPTURE=y (apps/main/Kconfig): bo dem RTT 16 KB RAM,
+ *   mac dinh nhuong cho che do Dinh vi (them 1 ket noi + 1 ngu canh CS). Khong build thi cac ham
+ *   duoi day la rong va "helmet capture" bao cach bat.
  * - Bang thong lon nhat: 48 kHz stereo, 2 x 155 B / 10 ms ~ 33 KB/s.
  *
  * Dinh dang ban ghi (little-endian):
@@ -33,8 +36,11 @@
 
 LOG_MODULE_REGISTER(capture, LOG_LEVEL_INF);
 
+#if defined(CONFIG_HELMET_CAPTURE)
+
 #define CAP_RTT_CHANNEL  1
-#define CAP_RTT_BUF_SIZE 16384 /* ~0.5 s o 33 KB/s: du de J-Link doc cham mot nhip */
+/* 16 KB ~ 0.5 s o 33 KB/s: J-Link doc cham mot nhip van kip */
+#define CAP_RTT_BUF_SIZE CONFIG_HELMET_CAPTURE_BUF
 #define CFG_RESEND_SDU   100   /* gui lai cau hinh ~1 s/lan: PC mo giua chung van bat kip */
 
 #define REC_SYNC0   0xA5
@@ -203,3 +209,48 @@ void capture_print_status(const struct shell *sh)
 		    atomic_get(&enabled) ? "ON" : "off", CAP_RTT_CHANNEL, rec_sent, rec_dropped,
 		    SEGGER_RTT_GetBytesInBuffer(CAP_RTT_CHANNEL));
 }
+
+#else /* !CONFIG_HELMET_CAPTURE: khong build */
+
+int capture_init(void)
+{
+	return -ENOTSUP;
+}
+
+void capture_set_enabled(bool on)
+{
+	if (on) {
+		LOG_WRN("Audio capture not built in - rebuild with EXTRA=-DCONFIG_HELMET_CAPTURE=y "
+			"(uses 16 KB RAM)");
+	}
+}
+
+void capture_stream_start(uint8_t idx, const struct helmet_stream_cfg *cfg)
+{
+	ARG_UNUSED(idx);
+	ARG_UNUSED(cfg);
+}
+
+void capture_stream_stop(uint8_t idx)
+{
+	ARG_UNUSED(idx);
+}
+
+void capture_sdu(uint8_t idx, uint8_t iso_flags, uint16_t iso_seq, uint32_t ts,
+		 const uint8_t *data, uint16_t len)
+{
+	ARG_UNUSED(idx);
+	ARG_UNUSED(iso_flags);
+	ARG_UNUSED(iso_seq);
+	ARG_UNUSED(ts);
+	ARG_UNUSED(data);
+	ARG_UNUSED(len);
+}
+
+void capture_print_status(const struct shell *sh)
+{
+	shell_print(sh, "Capture   : not built in (make APP=apps/main "
+		    "EXTRA=-DCONFIG_HELMET_CAPTURE=y build; uses 16 KB RAM)");
+}
+
+#endif /* CONFIG_HELMET_CAPTURE */

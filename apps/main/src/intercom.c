@@ -553,6 +553,11 @@ void intercom_select(enum ic_role r)
 		LOG_WRN("Intercom busy (%s) - ignoring role selection", intercom_mode_str(mode));
 		return;
 	}
+	if (nav_active()) {
+		/* Dinh vi co the dang giu lien ket toi chinh mu ban (moi cap thiet bi 1 ket noi) */
+		LOG_WRN("Intercom not available in navigation mode - turn it off first (hold Call 1 s)");
+		return;
+	}
 	if (s == HS_RINGING || s == HS_IN_CALL || s == HS_SHUTDOWN || s == HS_BOOT) {
 		LOG_WRN("Intercom not available in state %s", app_state_str(s));
 		return;

@@ -19,6 +19,8 @@
  *   intercom.c   : intercom mu-mu: chon vai tro bang nut, ket noi, ghep doi, noi lai
  *   ic_service.c : Helmet Intercom Service (GATT): server o moi mu, client o master
  *   ic_audio.c   : intercom: BAP Unicast Client o master, LC3 16 kHz hai chieu toi slave
+ *   ranging.c    : khoang cach mu-mu bang Channel Sounding khi dang intercom (de thu)
+ *   nav.c        : che do Dinh vi: khoang cach toi xe va mu kia, va mu kia toi xe (log moi 1 s)
  */
 
 #ifndef HELMET_H_
@@ -109,6 +111,7 @@ enum helmet_evt_type {
 	EVT_LOW_BATTERY,   /* a = 1 canh bao / 2 phai tat */
 	EVT_POWER_OFF_REQ, /* lenh shell */
 	EVT_IC,            /* intercom: co viec moi trong hang doi rieng cua intercom.c */
+	EVT_NAV,           /* Dinh vi: co viec moi trong hang doi rieng cua nav.c */
 };
 
 /* ---------------- status_led.c ---------------- */
@@ -207,6 +210,8 @@ enum helmet_prompt {
 	PROMPT_IC_END,      /* ket thuc / huy intercom */
 	PROMPT_IC_LOST,     /* mat lien ket, khong noi lai duoc */
 	PROMPT_IC_UNAVAIL,  /* het 60 s khong tim thay / khong duoc ket noi */
+	PROMPT_NAV_ON,      /* bat che do Dinh vi */
+	PROMPT_NAV_OFF,
 	PROMPT_COUNT,
 };
 
@@ -413,7 +418,13 @@ enum ic_op {
 	IC_OP_HELLO = 0x01, /* arg = phien ban giao thuc */
 	IC_OP_END = 0x14,   /* arg = enum ic_reason */
 	IC_OP_RANGE = 0x30, /* master -> slave: khoang cach do bang CS, cm = arg | arg2 << 8 */
+	/* Che do Dinh vi (nav.c), tren lien ket Dinh vi mu-mu: [op][tuoi x100 ms][cm thap][cm cao] */
+	IC_OP_NAV_HELLO = 0x40,     /* central -> peripheral: day la lien ket Dinh vi, arg = ver */
+	IC_OP_NAV_DIST_PEER = 0x41, /* central -> peripheral: khoang cach mu-mu central da do */
+	IC_OP_NAV_DIST_BIKE = 0x42, /* hai chieu: khoang cach tu mu gui toi xe */
 };
+
+#define IC_OP_IS_NAV(op) ((op) >= IC_OP_NAV_HELLO && (op) <= IC_OP_NAV_DIST_BIKE)
 
 enum ic_reason {
 	IC_REASON_USER = 0x00,
@@ -469,6 +480,8 @@ void ic_audio_print(const struct shell *sh);
 int ic_svc_discover(struct bt_conn *conn); /* master: tim HIS + dang ky Event */
 int ic_svc_send(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg);
 int ic_svc_send2(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg, uint8_t arg2);
+int ic_svc_send3(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t b1, uint8_t arg,
+		 uint8_t arg2);
 bool ic_svc_busy(void); /* con lenh ghi / indicate chua xong */
 
 /* ranging.c - do khoang cach mu-mu bang Channel Sounding khi dang goi intercom */
@@ -476,5 +489,27 @@ void ranging_start(struct bt_conn *conn, bool initiator); /* thread bo dieu khie
 void ranging_on_peer_report(uint16_t cm);                  /* slave, tu ic_service.c (bt_rx) */
 void ranging_log_status(void);                             /* 1 dong heartbeat khi dang do */
 int ranging_shell(const struct shell *sh, size_t argc, char **argv);
+
+/* ---------------- nav.c: che do Dinh vi (docs/HELMET_NAV_DINH_VI.md) ---------------- */
+
+/* Service Data Dinh vi cua mu (common/nav_proto.h, 22 B), main.c dua vao quang ba */
+extern uint8_t nav_adv_svc[];
+
+int nav_init(void);
+void nav_handle(void); /* EVT_NAV, chi goi tu thread bo dieu khien */
+void nav_toggle(void); /* giu Call 1 s */
+bool nav_active(void);
+void nav_shutdown(void); /* power_off */
+int nav_shell(const struct shell *sh, size_t argc, char **argv);
+
+/* main.c (bt_rx): true = ket noi nay do nav.c quan ly (lien ket Dinh vi / ung vien) */
+bool nav_conn_connected(struct bt_conn *conn, uint8_t err);
+bool nav_conn_owned(const struct bt_conn *conn);
+void nav_conn_secured(struct bt_conn *conn, bt_security_t level, enum bt_security_err err);
+void nav_conn_disconnected(struct bt_conn *conn, uint8_t reason);
+
+/* ic_service.c (bt_rx) */
+void nav_on_his_discovered(struct bt_conn *conn, int err);
+void nav_on_his_msg(struct bt_conn *conn, uint8_t op, uint8_t age100, uint16_t val);
 
 #endif /* HELMET_H_ */

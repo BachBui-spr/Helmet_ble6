@@ -23,7 +23,13 @@ target_sources(app PRIVATE
   src/ic_service.c
   src/ic_audio.c
   src/ranging.c
+  src/nav.c
 )
+
+# Dinh dang quang ba Dinh vi dung chung voi apps/bike (common/nav_proto.h)
+target_include_directories(app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../common)
+
+# Ghi am thanh ra RTT (capture.c) la tuy chon Kconfig HELMET_CAPTURE (file Kconfig), mac dinh tat.
 
 # Cac file chay moi 10 ms trong cuoc goi: bien dich toi uu toc do thay cho -Os mac dinh cua
 # Zephyr (CONFIG_SIZE_OPTIMIZATIONS). liblc3 da duoc module cua no bien dich -O3 -ffast-math.

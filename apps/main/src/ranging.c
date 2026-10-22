@@ -413,12 +413,15 @@ static void remote_caps_cb(struct bt_conn *conn, uint8_t status,
 		fail("capability exchange", -status);
 		return;
 	}
-	LOG_INF("Channel Sounding: peer reflector %s, IPT %s (t_ip2 0x%04x, t_sw %u us)",
-		p->reflector_supported ? "yes" : "NO",
-		p->t_ip2_ipt_times_supported ? "yes" : "NO", p->t_ip2_ipt_times_supported,
+	/* Nhu mau ipt_initiator: chi can ben kia phan xa duoc. t_ip2_ipt chi co trong su kien v2
+	 * (Zephyr dat 0 khi controller gui v1) nen khong dung de chan (do 22/10/2026: bao 0 giua
+	 * hai module cung firmware); ben kia khong ho tro IPT thi buoc tao cau hinh se bao loi.
+	 */
+	LOG_INF("Channel Sounding: peer reflector %s (IPT t_ip2 0x%04x, t_sw %u us)",
+		p->reflector_supported ? "yes" : "NO", p->t_ip2_ipt_times_supported,
 		p->t_sw_ipt_time_supported);
-	if (!p->reflector_supported || p->t_ip2_ipt_times_supported == 0) {
-		fail("peer without CS reflector / IPT", -ENOTSUP);
+	if (!p->reflector_supported) {
+		fail("peer without CS reflector", -ENOTSUP);
 		return;
 	}
 	advance(RS_WAIT_CAPS, RS_CONFIG);

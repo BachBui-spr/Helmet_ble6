@@ -51,6 +51,9 @@ static const struct prompt_seg s_ic_linked[] = {{1047, 60, 30}, {1319, 60, 30}, 
 static const struct prompt_seg s_ic_end[] = {{1568, 60, 30}, {1319, 60, 30}, {1047, 120, 0}};
 static const struct prompt_seg s_ic_lost[] = {{784, 150, 50}, {587, 250, 0}};
 static const struct prompt_seg s_ic_unavail[] = {{587, 100, 80}, {587, 100, 0}};
+/* Dinh vi: 3 not di len (bat) / di xuong (tat) */
+static const struct prompt_seg s_nav_on[] = {{659, 60, 20}, {988, 60, 20}, {1319, 100, 0}};
+static const struct prompt_seg s_nav_off[] = {{1319, 60, 20}, {988, 60, 20}, {659, 100, 0}};
 
 #define DEF(id, nm, s, lp) [id] = {.name = nm, .seg = s, .n = ARRAY_SIZE(s), .loop = lp}
 
@@ -74,6 +77,8 @@ static const struct prompt_def defs[PROMPT_COUNT] = {
 	DEF(PROMPT_IC_END, "ic_end", s_ic_end, false),
 	DEF(PROMPT_IC_LOST, "ic_lost", s_ic_lost, false),
 	DEF(PROMPT_IC_UNAVAIL, "ic_unavail", s_ic_unavail, false),
+	DEF(PROMPT_NAV_ON, "nav_on", s_nav_on, false),
+	DEF(PROMPT_NAV_OFF, "nav_off", s_nav_off, false),
 };
 
 /* Bang sin 1 chu ky + 1 mau de noi suy khong phai quay vong */

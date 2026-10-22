@@ -1,0 +1,16 @@
+# Tuy chon rieng cua apps/main. Dat khi build: make APP=apps/main EXTRA=-DCONFIG_HELMET_CAPTURE=y build
+# (sysbuild chi chuyen tiep bien CONFIG_* toi image cua app, khong chuyen bien CMake tu dat).
+
+config HELMET_CAPTURE
+	bool "Ghi am thanh nhan duoc ra RTT kenh 1 (make audio)"
+	help
+	  capture.c chep cac SDU LC3 nhan duoc ra RTT kenh 1 cho scripts/helmet_audio.py.
+	  Ton HELMET_CAPTURE_BUF byte RAM (mac dinh 16 KB), nen mac dinh TAT de du RAM cho
+	  che do Dinh vi (them 1 ket noi + 1 ngu canh Channel Sounding).
+
+config HELMET_CAPTURE_BUF
+	int "Bo dem RTT cho ghi am thanh (byte)"
+	default 16384
+	depends on HELMET_CAPTURE
+
+source "Kconfig.zephyr"
