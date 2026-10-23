@@ -6,6 +6,7 @@
 | Trạng thái | **Đã hiện thực và build sạch** ngày 20/10/2026: hub FLASH 27,8 % / RAM 39,5 %, mũ FLASH 41,4 % / RAM 95,7 %. Có **ghép mũ ↔ hub bằng nút, mã hoá tự động** (mục 8). **Chưa nạp, chưa chạy thử trên mạch** |
 | Lý do ra đời | Kết quả phân tích ngày 20/10/2026 ([HELMET_AURACAST.md](HELMET_AURACAST.md)): tính năng "chia sẻ âm thanh" tới nhiều tai nghe phụ thuộc hãng điện thoại. Trên Xiaomi Pad 7 Pro (HyperOS 3) phần chia sẻ LE Audio của Android bị tắt; chia sẻ của Xiaomi chỉ dùng Bluetooth Classic, mà mũ không có Classic |
 | Mã nguồn | Hub: `apps/bike/src/main.c`, `phone_sink.c`, `bcast_source.c`, `bhs.c`, `hub_ui.c`, `bike.h`, `prj.conf`. Mũ: `apps/main/src/hub_link.c` (mới), `broadcast_sink.c`, `main.c` |
+| Vấn đề đã gặp | Toàn bộ lỗi broadcast (mũ thu, ghép bằng nút, tranh radio CIS / BIG, dựng lại BIG) và cách sửa: [BROADCAST_VAN_DE_VA_GIAI_PHAP.md](BROADCAST_VAN_DE_VA_GIAI_PHAP.md) |
 
 ---
 
@@ -53,7 +54,7 @@ QoS hub đề nghị: unframed, 2M, RTN 2, **độ trễ tối đa 20 ms** (trư
 | Kiểu BIG (`bike isoint`) | **20 ms (mặc định)**: **1 BIS stereo** (FL\|FR, SDU 240 B), chu kỳ ISO 20 ms, **BN 2** (2 SDU 10 ms mỗi sự kiện), tạo bằng *LE Create BIG Test* (`CONFIG_BT_ISO_TEST_PARAMS`). Cần 2 × octet ≤ 251 B (48_4: 240 B). **10 ms**: 2 BIS (FL, FR), Create BIG thường (kiểu cũ, để so sánh). Controller từ chối BIG 20 ms 2 lần liền thì hub tự dùng 10 ms. Lý do ở mục 6 |
 | Cấu hình LC3 | Preset BAP **48_4_1**: 48 kHz, 10 ms, **120 B/khung**, unframed, 2M. Số octet tự đổi theo điện thoại (100–155) |
 | Phát lại (RTN) | Mặc định **0** (preset là 4; 22/10 là 2, sáng 23/10 là 1). BIG 20 ms dùng tối đa RTN 1. Đổi bằng `bike rtn <0..4>` (giá trị đã lưu được ưu tiên hơn mặc định) |
-| Tạo lại BIG | Workqueue **riêng** `bcast_wq` (stack 4 KB), bất đồng bộ: gọi stop rồi trả về, callback `stopped` mới xoá và tạo lại (thường dưới 0,5 s). Controller tự kết thúc BIG (hoặc tạo BIG thất bại) thì hub cũng tự tạo lại |
+| Tạo lại BIG | Workqueue **riêng** `bcast_wq` (stack 4 KB), bất đồng bộ: gọi stop rồi trả về, callback `stopped` mới xoá và tạo lại (dự kiến dưới 0,5 s, chưa đo). Controller tự kết thúc BIG (hoặc tạo BIG thất bại) thì hub cũng tự tạo lại |
 | Tên / ID | Broadcast Name **"Bike Audio"**. Broadcast ID **ngẫu nhiên một lần, lưu vĩnh viễn** (`bike/bid`), để sau này mũ nhớ được "xe của mình" |
 | Mã hoá | Mặc định **có mã hoá, mã 16 byte ngẫu nhiên** sinh lần đầu, lưu `bike/code`. **Không ai phải gõ**: mũ nhận mã khi ghép bằng nút (mục 8). `bike code new` (mã mới, mũ phải ghép lại), `bike code open` (không mã hoá), `bike code <chuỗi>` (thử nghiệm) |
 | Địa chỉ bộ phát | Dùng **địa chỉ identity** (`BT_LE_ADV_OPT_USE_IDENTITY`), cố định, nên mũ đã ghép tạo đồng bộ PA thẳng theo địa chỉ + SID đã lưu, không cần quét |
