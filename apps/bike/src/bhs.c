@@ -114,10 +114,13 @@ BT_GATT_SERVICE_DEFINE(bhs_svc,
 
 static const uint8_t pair_svc[] = {BHS_UUID_SVC_VAL, BHS_PROTO_VER, BHS_FLAG_PAIRING};
 
+/* KHONG co ten va KHONG co co "general discoverable": mu nhan ra hub bang Service Data. Truoc day
+ * co ten "Bike_Hub" -> trong 60 s cua so ghep, dien thoai / may tinh bang thay HAI "Bike_Hub" (moi
+ * bo quang ba mot dia chi RPA rieng) va co the ket noi nham vao bo quang ba nay (do 23/10/2026).
+ */
 static const struct bt_data ad_pair[] = {
-	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
 	BT_DATA(BT_DATA_SVC_DATA128, pair_svc, sizeof(pair_svc)),
-	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
 /* Controller tu dung bo quang ba co the ket noi khi co ket noi den: bat lai cho mu ke tiep */

@@ -45,9 +45,13 @@ static struct bt_pacs_cap cap = {
 	.codec_cap = &lc3_cap,
 };
 
-/* Uu tien QoS: unframed, 2M, RTN 2, tre 10 ms, presentation delay 20-40 ms */
+/* Uu tien QoS: unframed, 2M, RTN 2, tre toi da 20 ms, presentation delay 20-40 ms.
+ * Tre 20 ms (truoc 10 ms, do 23/10/2026: dien thoai lay dung gia tri hub de nghi): cho phep
+ * controller dien thoai dung FT 2 - goi bi BIG 20 ms cua hub chan o mot su kien CIS duoc gui lai
+ * o su kien ke tiep (bcast_source.c). Voi tre 10 ms la FT 1: goi bi chan la mat.
+ */
 static const struct bt_bap_qos_cfg_pref qos_pref =
-	BT_BAP_QOS_CFG_PREF(true, BT_GAP_LE_PHY_2M, 0x02, 10, 20000, 40000, 20000, 40000);
+	BT_BAP_QOS_CFG_PREF(true, BT_GAP_LE_PHY_2M, 0x02, 20, 20000, 40000, 20000, 40000);
 
 struct sink_cfg {
 	uint16_t octets;
@@ -62,6 +66,10 @@ struct ph_stream {
 	bool streaming;
 	uint32_t rx;
 	uint32_t bad;
+	uint16_t run;     /* SDU mat lien tiep hien tai */
+	uint16_t max_run; /* chuoi mat dai nhat tu lan heartbeat truoc */
+	uint32_t l_rx;    /* gia tri o lan heartbeat truoc */
+	uint32_t l_bad;
 };
 
 static struct ph_stream streams[CONFIG_BT_ASCS_MAX_ASE_SNK_COUNT];
@@ -294,6 +302,31 @@ static void put_side(uint8_t mask, const uint8_t *frame, uint16_t len, uint32_t 
 	}
 }
 
+/* Tham so CIS dien thoai thuc su chon (huong dien thoai -> hub = "central"). FT = so su kien CIS
+ * mot goi duoc gui lai; can >= 2 khi BIG 20 ms (bcast_source.c) de goi bi chan khong bi mat.
+ */
+static void log_cis_params(struct bt_bap_stream *stream)
+{
+	struct bt_iso_info info;
+	uint32_t ft;
+
+	if (stream->iso == NULL || bt_iso_chan_get_info(stream->iso, &info) != 0 ||
+	    info.type != BT_ISO_CHAN_TYPE_PERIPHERAL || info.iso_interval == 0U) {
+		return;
+	}
+	/* flush_timeout = FT x ISO interval (don vi 1,25 ms) */
+	ft = info.unicast.central.flush_timeout / info.iso_interval;
+	LOG_INF("Phone CIS: ISO interval %u us, NSE %u, BN %u, FT %u, PDU %u B, subinterval %u us, "
+		"transport latency %u us",
+		info.iso_interval * 1250U, info.max_subevent, info.unicast.central.bn, ft,
+		info.unicast.central.max_pdu, info.unicast.subinterval,
+		info.unicast.central.latency);
+	if (ft < 2U && bcast_source_iso_ms() > 10U) {
+		LOG_WRN("Phone CIS FT %u: each CIS packet the 20 ms BIG blocks is lost - compare "
+			"with 'bike isoint 10'", ft);
+	}
+}
+
 static void st_enabled(struct bt_bap_stream *stream)
 {
 	/* ASE sink: phia server (hub) bao Receiver Start Ready */
@@ -315,11 +348,16 @@ static void st_started(struct bt_bap_stream *stream)
 	s->mask = (s->cfg.chan_cnt == 2) ? (BIKE_CH_L | BIKE_CH_R) : mono_mask(s->cfg.alloc);
 	s->rx = 0;
 	s->bad = 0;
+	s->run = 0;
+	s->max_run = 0;
+	s->l_rx = 0;
+	s->l_bad = 0;
 	s->streaming = true;
 	update_expected();
-	LOG_INF("Phone streaming ASE %u: %u ch (loc 0x%x), %u B/frame -> BIS %s",
+	LOG_INF("Phone streaming ASE %u: %u ch (loc 0x%x), %u B/frame -> broadcast %s",
 		stream_idx(stream), s->cfg.chan_cnt, s->cfg.alloc, s->cfg.octets,
 		s->mask == (BIKE_CH_L | BIKE_CH_R) ? "L+R" : (s->mask == BIKE_CH_L ? "L" : "R"));
+	log_cis_params(stream);
 	bcast_source_phone_started(s->cfg.octets);
 }
 
@@ -365,6 +403,10 @@ static void st_recv(struct bt_bap_stream *stream, const struct bt_iso_recv_info 
 	s->rx++;
 	if (!valid) {
 		s->bad++;
+		s->run++;
+		s->max_run = MAX(s->max_run, s->run);
+	} else {
+		s->run = 0;
 	}
 
 	if (s->cfg.chan_cnt == 2) {
@@ -447,6 +489,26 @@ bool phone_sink_streaming(void)
 		}
 	}
 	return false;
+}
+
+/* Thread main (heartbeat 10 s) */
+void phone_sink_log_status(void)
+{
+	for (size_t i = 0; i < ARRAY_SIZE(streams); i++) {
+		struct ph_stream *s = &streams[i];
+		const uint32_t rx = s->rx;
+		const uint32_t bad = s->bad;
+
+		if (!s->streaming) {
+			continue;
+		}
+		LOG_INF("phone CIS ASE %u | 10 s: rx %u, lost %u, longest loss %u SDU (%u ms)",
+			(unsigned)i, rx - s->l_rx, bad - s->l_bad, s->max_run,
+			s->max_run * (BIKE_FRAME_US / 1000U));
+		s->l_rx = rx;
+		s->l_bad = bad;
+		s->max_run = 0;
+	}
 }
 
 void phone_sink_print(const struct shell *sh)

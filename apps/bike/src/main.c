@@ -2,7 +2,7 @@
  * Bike hub (apps/bike) - trung tam am thanh tren xe.
  * Thiet ke: docs/BIKE_HUB_THIET_KE.md
  *
- *   Dien thoai --(LE Audio unicast: CIS, LC3 48 kHz)--> hub --(Auracast: BIG 2 BIS)--> moi mu
+ *   Dien thoai --(LE Audio unicast: CIS, LC3 48 kHz)--> hub --(Auracast: BIG)--> moi mu
  *
  * Dien thoai ghep doi voi hub nhu mot thiet bi LE Audio thuong ("Bike_Hub", chi chieu nhan).
  * Mu (apps/main) ghep voi hub BANG NUT, khong go ma (bhs.c):
@@ -38,6 +38,16 @@ LOG_MODULE_REGISTER(bike, LOG_LEVEL_INF);
 #define HEARTBEAT_S   10
 #define SEC_TIMEOUT_S 30
 
+/* Chu ky ACL xin dien thoai dung (do 23/10/2026). Dien thoai tu chon chu ky la boi so cua 10 ms ->
+ * moi su kien ACL roi cung mot pha voi BIG 10 ms cua hub. SDC uu tien BIG (muc 2) hon ACL cua
+ * peripheral (muc 3) -> o pha xau ACL bi bo lien tuc: ma hoa cham 3-9 s, mat ket noi 0x08.
+ * 33,75 ms lech 3,75 ms moi su kien so voi chu ky BIG nen chi mot phan nho su kien trung BIG (nhu
+ * hub_link 11,25 ms cua mu). Supervision 6 s de chiu duoc cac su kien bi bo.
+ */
+#define PHONE_CONN_INT    27  /* x 1,25 ms = 33,75 ms */
+#define PHONE_SUP_TIMEOUT 600 /* x 10 ms = 6 s */
+#define PHONE_PARAM_TRIES 5   /* moi ket noi: dien thoai doi lai thi xin lai toi da 5 lan */
+
 #define SINK_CONTEXTS_ADV                                                                          \
 	(BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED | BT_AUDIO_CONTEXT_TYPE_MEDIA |                         \
 	 BT_AUDIO_CONTEXT_TYPE_GAME | BT_AUDIO_CONTEXT_TYPE_INSTRUCTIONAL)
@@ -46,10 +56,14 @@ static struct bt_le_ext_adv *adv_phone;
 static struct bt_conn *phone_conn;
 static bt_security_t sec_level;
 
+static uint8_t param_tries;
+
 static void adv_work_fn(struct k_work *w);
 static K_WORK_DEFINE(adv_work, adv_work_fn);
 static void sec_timeout_fn(struct k_work *w);
 static K_WORK_DELAYABLE_DEFINE(sec_timeout_work, sec_timeout_fn);
+static void phone_param_fn(struct k_work *w);
+static K_WORK_DELAYABLE_DEFINE(phone_param_work, phone_param_fn);
 
 /* ---------------- Quang ba cho dien thoai (co the ket noi) ---------------- */
 
@@ -150,6 +164,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 	LOG_INF("Disconnected: %s (reason 0x%02x %s)", addr, reason, bt_hci_err_to_str(reason));
 	if (conn == phone_conn) {
 		(void)k_work_cancel_delayable(&sec_timeout_work);
+		(void)k_work_cancel_delayable(&phone_param_work);
 		bt_conn_unref(phone_conn);
 		phone_conn = NULL;
 		if (!bhs_pair_active()) {
@@ -163,6 +178,7 @@ void hub_on_helmet(struct bt_conn *conn)
 {
 	if (conn == phone_conn) {
 		(void)k_work_cancel_delayable(&sec_timeout_work);
+		(void)k_work_cancel_delayable(&phone_param_work);
 		bt_conn_unref(phone_conn);
 		phone_conn = NULL;
 		k_work_submit(&adv_work); /* tiep tuc cho dien thoai */
@@ -202,6 +218,53 @@ static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_
 	if (!bhs_pair_active()) {
 		hub_tone(HUB_TONE_CONNECTED); /* trong cua so ghep co the la mu: khong bao */
 	}
+	/* 1 s sau (mu dang ghep da doc xong Join Info va duoc bo ra): xin chu ky ACL lech BIG */
+	param_tries = 0;
+	k_work_reschedule(&phone_param_work, K_SECONDS(1));
+}
+
+/* System workqueue: xin dien thoai doi chu ky ACL sang 33,75 ms / supervision 6 s */
+static void phone_param_fn(struct k_work *w)
+{
+	struct bt_conn_info info;
+	int err;
+
+	ARG_UNUSED(w);
+	if (phone_conn == NULL || bt_conn_get_info(phone_conn, &info) != 0) {
+		return;
+	}
+	if (info.le.interval_us == PHONE_CONN_INT * 1250U && info.le.timeout == PHONE_SUP_TIMEOUT) {
+		return;
+	}
+	if (param_tries >= PHONE_PARAM_TRIES) {
+		return; /* dien thoai khong chiu: thoi, khong tranh nhau */
+	}
+	param_tries++;
+	err = bt_conn_le_param_update(phone_conn, BT_LE_CONN_PARAM(PHONE_CONN_INT, PHONE_CONN_INT,
+								    0, PHONE_SUP_TIMEOUT));
+	LOG_INF("Phone ACL %u.%02u ms / supervision %u ms -> asking for 33.75 ms / 6 s (try %u, %d)",
+		info.le.interval_us / 1000U, (info.le.interval_us % 1000U) / 10U,
+		info.le.timeout * 10U, param_tries, err);
+}
+
+static void le_param_updated(struct bt_conn *conn, uint16_t interval, uint16_t latency,
+			     uint16_t timeout)
+{
+	if (conn != phone_conn) {
+		return;
+	}
+	LOG_INF("Phone ACL params: interval %u us, latency %u, supervision %u ms", interval * 1250U,
+		latency, timeout * 10U);
+	if (interval != PHONE_CONN_INT || timeout != PHONE_SUP_TIMEOUT) {
+		/* Boi so cua 10 ms (30 / 60 ms...): ACL khoa pha voi BIG -> o pha xau mat MOI su kien
+		 * (do 23/10/2026: 4/4 lan dien thoai tu doi sang 30 ms, lien ket chet ngay va het han
+		 * 0x08 dung 5 s sau; yeu cau 3 s sau thi da muon) -> xin ngay. Chu ky khac (vd 7,5 ms
+		 * luc tim dich vu): doi mot luc roi xin.
+		 */
+		const bool locked = (interval * 1250U) % 10000U == 0U;
+
+		k_work_reschedule(&phone_param_work, locked ? K_NO_WAIT : K_SECONDS(3));
+	}
 }
 
 /* Ket noi khong ma hoa sau 30 s (vd may khong ghep doi): ngat de dien thoai that ket noi duoc */
@@ -219,6 +282,7 @@ BT_CONN_CB_DEFINE(conn_cbs) = {
 	.disconnected = disconnected,
 	.recycled = recycled,
 	.security_changed = security_changed,
+	.le_param_updated = le_param_updated,
 };
 
 static void pairing_complete(struct bt_conn *conn, bool bonded)
@@ -301,6 +365,20 @@ static int cmd_rtn(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_isoint(const struct shell *sh, size_t argc, char **argv)
+{
+	const long ms = strtol(argv[1], NULL, 10);
+
+	ARG_UNUSED(argc);
+	if ((ms != 10 && ms != 20) || bcast_source_set_isoint((uint8_t)ms) == -EINVAL) {
+		shell_error(sh, "usage: bike isoint <10|20>");
+		return -EINVAL;
+	}
+	shell_print(sh, "BIG interval = %ld ms (%s) - rebuilding broadcast", ms,
+		    ms == 20 ? "1 stereo BIS, BN 2" : "2 BIS left / right");
+	return 0;
+}
+
 static int cmd_unpair(const struct shell *sh, size_t argc, char **argv)
 {
 	int err;
@@ -319,8 +397,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(bike_cmds,
 	SHELL_CMD(status, NULL, "Phone link, ASEs, broadcast and relay statistics", cmd_status),
 	SHELL_CMD(pair, NULL, "Open helmet pairing window 60 s", cmd_pair),
 	SHELL_CMD_ARG(code, NULL, "Broadcast code: bike code new | open | <text>", cmd_code, 2, 0),
-	SHELL_CMD_ARG(rtn, NULL, "BIS retransmissions: bike rtn <0..4> (default 2)", cmd_rtn, 2,
-		      0),
+	SHELL_CMD_ARG(rtn, NULL, "BIS retransmissions: bike rtn <0..4> (default 0; the 20 ms BIG "
+		      "uses at most 1; more blocks the phone's audio)", cmd_rtn, 2, 0),
+	SHELL_CMD_ARG(isoint, NULL, "BIG interval: bike isoint 20 (default: 1 stereo BIS, BN 2) | "
+		      "10 (2 BIS left / right)", cmd_isoint, 2, 0),
 	SHELL_CMD(unpair, NULL, "Delete all phone bonds", cmd_unpair),
 	SHELL_SUBCMD_SET_END);
 
@@ -406,7 +486,7 @@ int main(void)
 		return err;
 	}
 	if (IS_ENABLED(CONFIG_BT_SETTINGS)) {
-		settings_load(); /* bond, identity, bike/bid, bike/code, bike/rtn */
+		settings_load(); /* bond, identity, bike/bid, bike/code, bike/rtn, bike/isoint */
 	}
 	bt_conn_auth_info_cb_register(&auth_info_cb);
 
@@ -435,6 +515,7 @@ int main(void)
 		LOG_INF("heartbeat: phone %s, %s", phone_conn ? "connected" : "advertising",
 			phone_sink_streaming() ? "STREAMING" : "idle");
 		bcast_source_log_status();
+		phone_sink_log_status();
 	}
 	return 0;
 }

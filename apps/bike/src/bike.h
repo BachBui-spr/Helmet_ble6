@@ -4,8 +4,9 @@
  *
  *   main.c         : khoi dong BT, quang ba cho dien thoai, ket noi / bao mat, cai dat, shell
  *   phone_sink.c   : BAP Unicast Server (chi chieu nhan): dien thoai gui nhac LC3 qua CIS
- *   bcast_source.c : BAP Broadcast Source (Auracast): phat lai nguyen khung LC3 qua 2 BIS
- *                    (trai / phai) cho moi mu o gan; hang doi bu troi clock, khung im lang
+ *   bcast_source.c : BAP Broadcast Source (Auracast): phat lai nguyen khung LC3 cho moi mu o gan:
+ *                    BIG 20 ms 1 BIS stereo (mac dinh) hoac BIG 10 ms 2 BIS trai / phai;
+ *                    hang doi bu troi clock, khung im lang
  *   bhs.c          : Bike Hub Service + cua so ghep mu 60 s: mu doc broadcast ID / dia chi / ma
  *   hub_ui.c       : 4 nut, am bao qua loa, bat / tat nguon (board giong het mu)
  *
@@ -43,6 +44,7 @@ int phone_sink_register(void); /* TRUOC bt_enable(): PACS + ASCS vao GATT */
 int phone_sink_init(void);     /* sau bt_enable() + settings_load() */
 bool phone_sink_streaming(void);
 void phone_sink_print(const struct shell *sh);
+void phone_sink_log_status(void); /* heartbeat: SDU CIS nhan / mat trong 10 s vua qua */
 
 /* ---------------- bcast_source.c ---------------- */
 
@@ -66,6 +68,9 @@ enum bike_code_mode {
 /* Luu + tao lai BIG. Doi ma thi cac mu da ghep phai ghep lai (giu nut "vao xe"). */
 int bcast_source_set_code(enum bike_code_mode mode, const char *text);
 int bcast_source_set_rtn(uint8_t rtn);       /* so lan phat lai moi PDU cua BIS; luu + tao lai */
+/* Chu ky BIG: 20 = 1 BIS stereo, BN 2 (mac dinh); 10 = 2 BIS trai / phai. Luu + tao lai */
+int bcast_source_set_isoint(uint8_t ms);
+uint8_t bcast_source_iso_ms(void); /* chu ky BIG dang chay (10 / 20 ms) */
 void bcast_source_print(const struct shell *sh);
 void bcast_source_log_status(void);
 /* Goi bt_rx (BHS): dien BHS_JOIN_INFO_LEN byte thong tin vao xe */
