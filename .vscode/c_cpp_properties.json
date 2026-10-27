@@ -4,8 +4,6 @@
             "name": "ME54BS62 nRF54L15 (Zephyr)",
             "compileCommands": [
                 "${workspaceFolder}/build/main/main/compile_commands.json",
-                "${workspaceFolder}/build/Helmet/Helmet/compile_commands.json",
-                "${workspaceFolder}/build/hw_test/hw_test/compile_commands.json",
                 "${workspaceFolder}/build/bike/bike/compile_commands.json"
             ],
             "compilerPath": "${env:HOME}/ncs/toolchains/fbf7391cab/opt/zephyr-sdk/gnu/arm-zephyr-eabi/bin/arm-zephyr-eabi-gcc",
@@ -20,6 +18,10 @@
             "cppStandard": "gnu++17",
             "includePath": [
                 "${workspaceFolder}/apps/main/src",
+                "${workspaceFolder}/lib/services/include",
+                "${workspaceFolder}/lib/hal/include",
+                "${workspaceFolder}/lib/core/include",
+                "${workspaceFolder}/lib/proto/include",
                 "${workspaceFolder}/build/main/main/zephyr/include/generated/zephyr",
                 "${workspaceFolder}/build/main/main/zephyr/include/generated",
                 "${env:HOME}/ncs/v3.4.0/zephyr/include",

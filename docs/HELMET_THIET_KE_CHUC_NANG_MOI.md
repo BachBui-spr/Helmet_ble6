@@ -18,6 +18,9 @@ Cách đọc tài liệu:
 - Mục 4–7: mỗi mục là một chức năng, cùng một khung trình bày: yêu cầu chi tiết → luồng dữ liệu → thiết kế từng module → trình tự hoạt động → xử lý lỗi → kiểm thử.
 - Mục 8–12: tổng hợp thay đổi ở module cũ, chẩn đoán, kế hoạch kiểm thử, rủi ro, phụ lục.
 
+
+> **Ghi chú 27/10/2026:** mã nguồn đã được tổ chức lại theo lớp. `helmet.h` / `main.c` nay tách thành `apps/main/src/app/` (lớp ứng dụng, `app/app.h`), `apps/main/src/features/<chức năng>/` và thư viện dùng chung `lib/` (`hal/`, `core/`, `services/`, `proto/`). Các tên file trong tài liệu này là tên tại thời điểm thiết kế; vị trí hiện tại xem [README.md](../README.md), mục *Kiến trúc mã nguồn*.
+
 ---
 
 ## Mục lục

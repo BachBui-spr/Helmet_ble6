@@ -5,7 +5,7 @@
 | Áp dụng cho | `apps/main` (firmware đầy đủ), board `me54bs62` (nRF54L15) |
 | Trạng thái | **Đã hiện thực và nạp lên mạch SN 69750999 ngày 19/10/2026.** Đã thử cách tự tìm với Xiaomi Pad 7 Pro (broadcast mã hoá, 48 kHz, 2 BIS): nghe được. Bản sửa tiếng tạch và chờ khi nguồn tạm dừng đã nạp, **chưa thử lại**. Cách điện thoại chỉ đường chưa thử |
 | Dựa trên | NCS v3.4.0 / Zephyr 4.4. Đã đối chiếu với sample `zephyr/samples/bluetooth/bap_broadcast_sink` và mã nguồn thư viện `bap_broadcast_sink.c`, `bap_scan_delegator.c` |
-| Mã nguồn | `apps/main/src/broadcast_sink.c` (mới). Sửa thêm: `main.c`, `le_audio.c`, `intercom.c`, `buttons.c`, `prompts.c`, `helmet.h`, `prj.conf`, `CMakeLists.txt` |
+| Mã nguồn | `apps/main/src/features/broadcast/broadcast_sink.c` (mới). Sửa thêm lúc đó: `main.c`, `le_audio.c`, `intercom.c`, `buttons.c`, `prompts.c`, `helmet.h`, `prj.conf`, `CMakeLists.txt` (từ 27/10/2026 nằm ở `apps/main/src/app/`, `features/`, `lib/`, xem [README.md](../README.md) mục *Kiến trúc mã nguồn*) |
 | Tài liệu liên quan | [HELMET_HUONG_DAN_SU_DUNG_VA_KIEM_TRA.md](HELMET_HUONG_DAN_SU_DUNG_VA_KIEM_TRA.md), [HELMET_THIET_KE_INTERCOM.md](HELMET_THIET_KE_INTERCOM.md). Mọi lỗi broadcast đã gặp và cách sửa: [BROADCAST_VAN_DE_VA_GIAI_PHAP.md](BROADCAST_VAN_DE_VA_GIAI_PHAP.md) |
 
 ---

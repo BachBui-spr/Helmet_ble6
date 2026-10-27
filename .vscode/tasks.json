@@ -27,9 +27,9 @@
             "problemMatcher": ["$gcc"]
         },
         {
-            "label": "ME54: Build + Flash hw_test",
+            "label": "ME54: Build + Flash bike hub",
             "type": "shell",
-            "command": "make APP=apps/hw_test build flash",
+            "command": "make APP=apps/bike build flash",
             "problemMatcher": ["$gcc"]
         },
         {
@@ -41,7 +41,7 @@
             "problemMatcher": []
         },
         {
-            "label": "ME54: Audio capture (Helmet)",
+            "label": "ME54: Audio capture (helmet)",
             "type": "shell",
             "command": "make audio",
             "presentation": { "panel": "dedicated", "focus": true },

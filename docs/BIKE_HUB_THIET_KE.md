@@ -5,7 +5,7 @@
 | Áp dụng cho | `apps/bike` (mới), board `me54bs62` (nRF54L15) dùng làm bộ trung tâm gắn trên xe. Mũ dùng `apps/main` (đã có phần thu Auracast) |
 | Trạng thái | **Đã hiện thực và build sạch** ngày 20/10/2026: hub FLASH 27,8 % / RAM 39,5 %, mũ FLASH 41,4 % / RAM 95,7 %. Có **ghép mũ ↔ hub bằng nút, mã hoá tự động** (mục 8). **Chưa nạp, chưa chạy thử trên mạch** |
 | Lý do ra đời | Kết quả phân tích ngày 20/10/2026 ([HELMET_AURACAST.md](HELMET_AURACAST.md)): tính năng "chia sẻ âm thanh" tới nhiều tai nghe phụ thuộc hãng điện thoại. Trên Xiaomi Pad 7 Pro (HyperOS 3) phần chia sẻ LE Audio của Android bị tắt; chia sẻ của Xiaomi chỉ dùng Bluetooth Classic, mà mũ không có Classic |
-| Mã nguồn | Hub: `apps/bike/src/main.c`, `phone_sink.c`, `bcast_source.c`, `bhs.c`, `hub_ui.c`, `bike.h`, `prj.conf`. Mũ: `apps/main/src/hub_link.c` (mới), `broadcast_sink.c`, `main.c` |
+| Mã nguồn | Hub (`apps/bike/src/`): `app/main.c`, `app/ui.c` (nút, âm báo, nguồn; dùng `lib/hal/keys`, `lib/hal/power_hw`, `lib/services/prompt_player`), `app/app.h`, `features/phone/phone_sink.c`, `features/broadcast/bcast_source.c`, `features/broadcast/bhs.c`, `prj.conf`. Mũ: `apps/main/src/features/broadcast/hub_link.c`, `broadcast_sink.c`, `app/app_bt.c`. Giao thức BHS dùng chung: `lib/proto/include/me54/proto/bhs_proto.h` |
 | Vấn đề đã gặp | Toàn bộ lỗi broadcast (mũ thu, ghép bằng nút, tranh radio CIS / BIG, dựng lại BIG) và cách sửa: [BROADCAST_VAN_DE_VA_GIAI_PHAP.md](BROADCAST_VAN_DE_VA_GIAI_PHAP.md) |
 
 ---

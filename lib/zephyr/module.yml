@@ -1,0 +1,6 @@
+# lib/ la mot Zephyr module: app nap qua ZEPHYR_EXTRA_MODULES (xem apps/*/CMakeLists.txt).
+# Zephyr xu ly CMakeLists.txt va Kconfig cua module nhu cac module cua SDK.
+name: me54_lib
+build:
+  cmake: .
+  kconfig: Kconfig

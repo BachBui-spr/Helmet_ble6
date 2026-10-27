@@ -9,19 +9,46 @@ Tài liệu thiết kế đầy đủ (yêu cầu, kiến trúc, luồng dữ li
 ```
 .
 ├── env.sh                      # source để có west, GCC, nrfutil, cmake của NCS v3.4.0
-├── Makefile                    # make build / flash / rtt / audio / uart / menuconfig / ...
+├── Makefile                    # make build / flash / rtt / audio / uart / menuconfig / ... (APP mặc định: apps/main)
 ├── boards/minew/me54bs62/      # board definition: module + phần cứng Helmet board (target: me54bs62/nrf54l15/cpuapp)
-├── apps/Helmet/                # FIRMWARE CHÍNH: tai nghe LE Audio (xem apps/Helmet/README.md) - app mặc định của make
-├── apps/hw_test/               # firmware kiểm tra phần cứng (LED, nút, I2C, loa, micro, BLE)
+├── lib/                        # mã DÙNG CHUNG của các app, chia theo lớp (là một Zephyr module)
+│   ├── core/                   #   lớp 1b: thuật toán thuần C (âm báo, lấy mẫu lại, DSP giọng nói, công thức MLX90632...)
+│   ├── hal/                    #   lớp 1a: phần cứng của board (I2S, micro PDM, nút, LED, nguồn, MLX90632)
+│   ├── services/               #   lớp 2: dịch vụ có thread (đường ra loa, chiều lên cuộc gọi, cử chỉ nút, phát âm báo)
+│   └── proto/                  #   chỉ header: giao thức giữa các thiết bị (mũ ↔ xe, mũ ↔ mũ)
+├── apps/main/                  # FIRMWARE MŨ (app mặc định của make), xem apps/main/README.md
+│   └── src/                    #   app/ (lớp 4) · features/{phone,intercom,broadcast,thermo}/ (lớp 3) · debug/
+├── apps/bike/                  # FIRMWARE XE (bike hub), xem docs/BIKE_HUB_THIET_KE.md
+│   └── src/                    #   app/ (lớp 4) · features/{phone,broadcast}/ (lớp 3)
 ├── scripts/rtt.sh              # mở terminal RTT (log + shell) chỉ qua dây SWD
-├── scripts/helmet_audio.py     # nghe/lưu WAV âm thanh Helmet nhận được, qua J-Link (make audio)
+├── scripts/helmet_audio.py     # nghe/lưu WAV âm thanh mũ nhận được, qua J-Link (make audio)
 ├── backup/                     # firmware gốc đọc ra từ chip trước lần nạp đầu tiên
-├── docs/                       # datasheet, schematic, PINOUT.md, TAI_LIEU_THIET_KE.md (tài liệu thiết kế)
+├── docs/                       # tài liệu thiết kế, datasheet, schematic, PINOUT.md
 ├── tools/                      # udev rule chặn ModemManager
-└── .vscode/                    # cấu hình cho extension nRF Connect và các task
+└── .vscode/                    # cấu hình IntelliSense và các task
 ```
 
-## Môi trường đã cài và kiểm tra
+## Kiến trúc mã nguồn
+
+Phần trên (riêng từng app) chia theo **chức năng**; phần dưới (dùng chung, `lib/`) chia theo **lớp**:
+
+| Lớp | Thư mục | Nội dung | Được làm / không được làm |
+|---|---|---|---|
+| 4. Ứng dụng | `apps/<app>/src/app/` | Máy trạng thái, khởi động BT, quảng bá, kết nối, shell, quy trình tắt máy, cử chỉ → hành động | Gọi được mọi lớp dưới |
+| 3. Chức năng | `apps/<app>/src/features/<tên>/` | Mũ: `phone`, `intercom`, `broadcast`, `thermo`. Xe: `phone`, `broadcast` | Báo lên ứng dụng chỉ qua `app/app.h` (`app_post(EVT_*)`, `app_state()`, cài đặt) |
+| 2. Dịch vụ | `lib/services/` | `audio_out`, `voice_tx`, `buttons`, `audio_stream`, `prompt_player` | Có thread / hàng đợi; ghép HAL + core; không biết chức năng nào đang dùng mình (báo lên bằng callback đăng ký lúc khởi động) |
+| 1a. HAL | `lib/hal/` | `i2s_out`, `mic_in`, `keys`, `status_led`, `power_hw`, `mlx90632` | Nơi duy nhất gọi driver Zephyr / nrfx của board; không có khái niệm nghiệp vụ |
+| 1b. Core | `lib/core/` | `prompts`, `pcm_ring`, `resampler`, `mixer`, `voice_dsp`, `mlx90632_calc`, `lc3_silence` | **C thuần, không include `<zephyr/...>`**: biên dịch và thử được trên PC |
+| Giao thức | `lib/proto/` | `bhs_proto.h` (mũ ↔ xe), `his_proto.h` (mũ ↔ mũ) | Chỉ header; sửa ở đây là sửa cho cả hai firmware |
+| 0. Nền tảng | `boards/`, NCS / Zephyr | Devicetree, kernel, BT host + SoftDevice Controller | Không phải code của dự án |
+
+Quy tắc:
+- **Chỉ gọi xuống.** Đi lên bằng sự kiện (`app_post`) hoặc callback đã đăng ký (vd `buttons_init(&cb)`, `voice_set_mic_unavailable_cb()`, `keys_init(cb)`).
+- **CMake chặn include sai lớp:** mỗi lớp của `lib/` là một thư viện riêng, chỉ thấy header của chính nó và của lớp nó được dùng (`core` → chỉ core; `hal` → hal + core; `services` → services + hal + core + proto). Đường include ghi rõ lớp: `#include <me54/hal/i2s_out.h>`, `<me54/core/prompts.h>`, `<me54/services/audio_out.h>`, `<me54/proto/bhs_proto.h>`. Trong app, include theo đường dẫn từ `src/`: `"app/app.h"`, `"features/phone/le_audio.h"`.
+- **Mỗi module của `lib/` được bật bằng Kconfig** trong `prj.conf` của app (menu *Modules → ME54BS62 shared library*). Module lớp trên tự chọn các module lớp dưới nó dùng. Ví dụ mũ bật `CONFIG_ME54_SVC_AUDIO_OUT`, xe bật `CONFIG_ME54_SVC_PROMPT_PLAYER`. App nạp `lib/` bằng `list(APPEND ZEPHYR_EXTRA_MODULES ...)` trong `CMakeLists.txt` (trước `find_package(Zephyr)`).
+- **Các chức năng cùng lớp hiện vẫn gọi nhau** để phân xử ưu tiên loa / radio: `le_audio` ↔ `broadcast_sink` ↔ `intercom` ở mũ, `phone_sink` → `bcast_source` ở xe. Muốn bỏ thì gom luật ưu tiên về một chỗ ở lớp ứng dụng (vd `app/audio_policy.c`); việc này đổi hành vi nên phải thử lại trên mạch.
+
+## Môi trường đã cài và kiểm tra## Môi trường đã cài và kiểm tra
 
 | Thành phần | Phiên bản | Vị trí |
 |---|---|---|
@@ -36,17 +63,17 @@ Tài liệu thiết kế đầy đủ (yêu cầu, kiến trúc, luồng dữ li
 ```bash
 cd ~/Project/Bluetooth_ME54BS62
 
-make build        # build firmware chính apps/Helmet cho me54bs62/nrf54l15/cpuapp -> build/Helmet
+make build        # build firmware mũ apps/main cho me54bs62/nrf54l15/cpuapp -> build/main
 make flash        # nạp qua J-Link
 make rtt          # xem log và gõ lệnh shell qua RTT (Ctrl+C để thoát)
-make audio        # (thay cho make rtt) nghe + lưu WAV âm thanh LE Audio mà Helmet nhận được
+make audio        # (thay cho make rtt) nghe + lưu WAV âm thanh LE Audio mà mũ nhận được
 ```
 
 Các lệnh khác: chạy `make help`. Có thể đổi app hoặc chọn probe bằng biến:
 
 ```bash
-make APP=apps/hw_test build flash   # firmware kiểm tra phần cứng -> build/hw_test
-make APP=apps/hw_test rtt           # mọi lệnh khác cũng phải kèm APP=apps/hw_test
+make APP=apps/bike build flash      # firmware xe (bike hub) -> build/bike
+make APP=apps/bike rtt              # mọi lệnh khác cũng phải kèm APP=apps/bike
 make JLINK_SN=69750999 flash      # khi cắm nhiều J-Link (xem số serial: make devices)
 make EXTRA="-DCONFIG_LOG_DEFAULT_LEVEL=4" pristine
 ```
@@ -55,61 +82,26 @@ Nếu muốn dùng `west` trực tiếp:
 
 ```bash
 source ./env.sh
-west build -b me54bs62/nrf54l15/cpuapp -d build/Helmet apps/Helmet -- -DBOARD_ROOT=$PWD
-west flash -d build/Helmet
+west build -b me54bs62/nrf54l15/cpuapp -d build/main apps/main -- -DBOARD_ROOT=$PWD
+west flash -d build/main
 ```
 
 `-DBOARD_ROOT=$PWD` là bắt buộc. Nếu thiếu, west sẽ không tìm thấy board `me54bs62`.
 
-## Firmware chính `apps/Helmet`
+## Firmware
 
-Tai nghe **LE Audio** (BAP Unicast Server, VCP, MCP; giải mã LC3 → I2S → 2×MAX98357A). Cách ghép đôi, lệnh shell `helmet …` và cách nghe lại âm thanh qua J-Link: xem [apps/Helmet/README.md](apps/Helmet/README.md).
-
-## Firmware kiểm tra `apps/hw_test`
-
-Firmware này dùng để kiểm tra từng khối của **Helmet board** (build: `make APP=apps/hw_test build flash`). Sơ đồ chân xem tại [docs/PINOUT.md](docs/PINOUT.md).
-
-| Khối | Tự động khi khởi động | Kiểm tra bằng lệnh |
+| App | Vai trò | Tài liệu |
 |---|---|---|
-| Chip | in part, variant, package, Device ID, xung CPU, nguyên nhân reset | `hw info` |
-| **LED Bluetooth** (P2.07) | nhấp nháy 1 Hz (đồng thời là xung vuông để đo bằng scope) | `hw blink <ms>`; `hw led on\|off` để giữ một mức cố định khi đo bằng đồng hồ |
-| **4 nút** Vol+/Vol−/Call/Power (P0.02/P0.01/P0.00/P0.03) | log `Button Vol Up PRESSED/released` | nhấn nút |
-| **MLX90632** (I2C bit-bang, 0x3A) | đọc EE_VERSION | `hw mlx`, `i2c scan i2c-sensor` |
-| **Loa** 2×MAX98357A (I2S20) | | `hw beep [hz] [ms]`, ví dụ `hw beep 1000 500` |
-| **Micro** 2×IM69D130 (PDM20) | | `hw mic [ms]`: in DC, AC-RMS (dBFS), min/max cho từng kênh L/R và số mẫu L≠R |
-| **BLE / anten** | quảng bá `ME54BS62-Test` (connectable), hỗ trợ ghép đôi Just Works, khóa lưu trong RRAM | quét/kết nối bằng app **nRF Connect** hoặc Bluetooth của Ubuntu; `hw unpair` xóa mọi bond |
-| Nhiệt độ die | heartbeat mỗi 5 s | `hw temp` |
+| `apps/main` | Mũ: nghe nhạc + cuộc gọi LE Audio, intercom mũ–mũ, nghe Auracast / vào xe, cảm biến nhiệt, nút, nguồn | [apps/main/README.md](apps/main/README.md), [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md](docs/HELMET_THIET_KE_CHUC_NANG_MOI.md), [docs/HELMET_THIET_KE_INTERCOM.md](docs/HELMET_THIET_KE_INTERCOM.md), [docs/HELMET_AURACAST.md](docs/HELMET_AURACAST.md) |
+| `apps/bike` | Xe (bike hub): nhận nhạc LE Audio từ điện thoại, phát Auracast cho mọi mũ, ghép mũ bằng nút | [docs/BIKE_HUB_THIET_KE.md](docs/BIKE_HUB_THIET_KE.md), [docs/BROADCAST_VAN_DE_VA_GIAI_PHAP.md](docs/BROADCAST_VAN_DE_VA_GIAI_PHAP.md) |
 
-Lệnh shell khác (chạy đồng thời trên RTT và UART20):
-
-| Lệnh | Tác dụng |
-|---|---|
-| `gpio conf gpio1 14 o` rồi `gpio set gpio1 14 1` | điều khiển một chân bất kỳ (ví dụ P1.14) để dò tín hiệu |
-| `gpio get gpio0 2` | đọc mức logic của một chân (ví dụ nút Vol Up) |
-| `i2c scan i2c-sensor` | quét bus I2C |
-| `kernel threads`, `device list` | trạng thái hệ thống |
-
-Tên thiết bị GPIO trong shell: `gpio0` = P0, `gpio1` = P1, `gpio2` = P2.
-
-Kết quả đo trên mạch ngày 13/10/2026:
-
-```
-hw_test: SoC part  : 0x54b15  variant: AAC0  package: 0x4341      <- "CA" = WLCSP CAAA
-hw_test: CPU clock : 128000000 Hz (sys timer 1000000 Hz)
-hw_test: led0 -> gpio@50400 pin 7 (toggle every 500 ms)          <- LED Bluetooth P2.07: OK
-hw_test: MLX90632 @0x3a: NO RESPONSE (-5)                         <- xem docs/PINOUT.md, muc 3
-bt_hci_core: HW Variant: nRF54Lx (0x0005)
-hw_test: BLE advertising as "ME54BS62-Test"                       <- BLE controller: OK
-Mic L: DC -4255.3  AC-RMS 4310.3 (-17.6 dBFS) ...
-L != R in 0/16000 samples  -> L/R IDENTICAL                       <- xem docs/PINOUT.md, muc 4
-Beep 1000 Hz, 500 ms -> I2S BCLK P1.12 / LRCLK P1.10 / DIN P1.15  <- I2S chay khong loi, can nghe thu
-```
+Firmware cũ `apps/Helmet` (bản đầu của mũ) và firmware kiểm tra phần cứng `apps/hw_test` đã được gỡ khỏi cây mã ngày 27/10/2026. Khi cần (vd bring-up board mới), lấy lại từ lịch sử git: `git show a1ab029:apps/hw_test/src/main.c`.
 
 ## Dùng trong VS Code
 
 1. Mở thư mục này trong VS Code.
-2. Chạy `make build` ít nhất một lần (và `make APP=apps/main build`, `make APP=apps/hw_test build` nếu cần sửa hai app đó). Lệnh này tạo `compile_commands.json` trong thư mục build, file mà IntelliSense cần (xem phần dưới).
-3. Dùng **Terminal → Run Task**: `ME54: Build`, `ME54: Flash (J-Link)`, `ME54: RTT log/shell`, `ME54: Audio capture (Helmet)`, `ME54: Build + Flash hw_test`... Hoặc dùng các nút của extension nRF Connect: vào *Applications* → `Helmet` → **Add build configuration**, chọn SDK/Toolchain **v3.4.0** và board `me54bs62/nrf54l15/cpuapp` trong mục *Custom boards*.
+2. Chạy `make build` (mũ) và `make APP=apps/bike build` (xe) ít nhất một lần. Lệnh này tạo `compile_commands.json` trong thư mục build, file mà IntelliSense cần (xem phần dưới). File trong `lib/` lấy lệnh biên dịch từ bản build của app dùng nó.
+3. Dùng **Terminal → Run Task**: `ME54: Build`, `ME54: Flash (J-Link)`, `ME54: RTT log/shell`, `ME54: Audio capture (helmet)`, `ME54: Build + Flash bike hub`... Hoặc dùng các nút của extension nRF Connect: vào *Applications* → `main` → **Add build configuration**, chọn SDK/Toolchain **v3.4.0** và board `me54bs62/nrf54l15/cpuapp` trong mục *Custom boards*.
 
 ### IntelliSense: vì sao trước đây báo lỗi đỏ, và cách đã sửa
 
@@ -127,7 +119,7 @@ Extension C/C++ của VS Code đang được đặt để hỏi các thông tin 
 
 **Cách đã sửa**:
 - CMake luôn xuất file `compile_commands.json`, ghi lại *chính xác lệnh biên dịch của từng file .c*: compiler, mọi `-I`, `-D`, `-imacros`.
-- [.vscode/c_cpp_properties.json](.vscode/c_cpp_properties.json) chỉ cho extension C/C++ dùng **cùng lúc** file của cả ba app: `build/main/main/compile_commands.json`, `build/Helmet/Helmet/compile_commands.json` và `build/hw_test/hw_test/compile_commands.json`, không hỏi nRF Connect nữa. Mỗi file `.c` lấy đúng lệnh biên dịch của app chứa nó, mở file của app nào cũng đúng mà không phụ thuộc lần build gần nhất.
+- [.vscode/c_cpp_properties.json](.vscode/c_cpp_properties.json) chỉ cho extension C/C++ dùng **cùng lúc** file của cả hai app: `build/main/main/compile_commands.json` và `build/bike/bike/compile_commands.json`, không hỏi nRF Connect nữa. Mỗi file `.c` (kể cả file trong `lib/`) lấy đúng lệnh biên dịch của bản build chứa nó, mở file nào cũng đúng mà không phụ thuộc lần build gần nhất.
 - File `.c` **mới** chưa build lần nào thì chưa có trong `compile_commands.json`. Khi đó IntelliSense dùng danh sách dự phòng (`includePath`/`defines` trong cùng file cấu hình: các thư mục include chính của Zephyr, nrfx, CMSIS, liblc3, SEGGER RTT, SoftDevice Controller), nên `#include <zephyr/...>` vẫn tìm thấy. Build lại để có đủ `CONFIG_*` của app.
 - `make build` / `make pristine` vẫn tạo symlink `build/compile_commands.json` trỏ tới app vừa build, cho công cụ khác (clangd, ...).
 
@@ -168,9 +160,9 @@ Nạp lại bằng `make restore-factory`. Luồng này đã được thử: sau
   3. Đo điện áp tại pad RST của module khi J-Link không chạy: phải khoảng 3.3 V (có R20 10k kéo lên). Nếu bằng 0 V là dây RESET đang chạm GND hoặc nút SW1 bị kẹt.
   4. Quan sát LED Bluetooth: nhấp nháy 1 Hz nghĩa là firmware vẫn chạy và chỉ có đường SWD bị hỏng; tắt hẳn nghĩa là chip đang bị giữ reset hoặc mất nguồn.
   5. Chạy `make info`. Kết nối được thì sẽ in ra `deviceVersion: NRF54L15_xxAA_REV2`.
-- **BLE kết nối xong bị ngắt ngay, `reason 0x05` (Authentication Failure)**: Ubuntu (BlueZ), Android và iOS thường **yêu cầu ghép đôi ngay khi kết nối**. Firmware không bật `CONFIG_BT_SMP` thì ghép đôi thất bại và máy kia tự ngắt sau khoảng 0.3 s. `hw_test` hiện đã bật SMP (Just Works) và lưu bond bằng settings + ZMS vào phân vùng `storage`. Các bước sau đã được thử với Bluetooth của laptop: ghép đôi, reset chip, kết nối lại có mã hóa luôn mà không cần ghép đôi lại.
+- **BLE kết nối xong bị ngắt ngay, `reason 0x05` (Authentication Failure)**: Ubuntu (BlueZ), Android và iOS thường **yêu cầu ghép đôi ngay khi kết nối**. Firmware không bật `CONFIG_BT_SMP` thì ghép đôi thất bại và máy kia tự ngắt sau khoảng 0.3 s. Cả hai firmware đều bật SMP (Just Works) và lưu bond bằng settings + ZMS vào phân vùng `storage`. Các bước sau đã được thử với Bluetooth của laptop: ghép đôi, reset chip, kết nối lại có mã hóa luôn mà không cần ghép đôi lại.
   - Khi ghép đôi bằng `bluetoothctl`, phải đăng ký agent trước: `agent NoInputNoOutput`, rồi `default-agent`, rồi `pair D3:EE:24:55:47:E9`. Chạy riêng lệnh `bluetoothctl pair ...` không có agent sẽ báo `AuthenticationFailed`.
-  - Nếu xóa bond ở một phía (`hw unpair` trên chip, hoặc *Forget/Remove* trên máy tính/điện thoại), phải xóa luôn ở phía kia rồi mới ghép đôi lại. Nếu không sẽ gặp lỗi khóa (`PIN or Key Missing`).
+  - Nếu xóa bond ở một phía (`helmet unpair` / `bike unpair` trên chip, hoặc *Forget/Remove* trên máy tính/điện thoại), phải xóa luôn ở phía kia rồi mới ghép đôi lại. Nếu không sẽ gặp lỗi khóa (`PIN or Key Missing`).
 - **ModemManager** đang chạy trên máy và có thể chiếm `/dev/ttyACM*` của J-Link VCOM. Cài rule chặn nó:
   ```bash
   sudo cp tools/71-nrf-jlink-modemmanager-ignore.rules /etc/udev/rules.d/
@@ -178,5 +170,5 @@ Nạp lại bằng `make restore-factory`. Luồng này đã được thử: sau
   ```
 - **Tụ tải thạch anh** (`&lfxo`, `&hfxo` trong file dts của board) đang dùng giá trị của nRF54L15 DK. Nên hỏi Minew thông số CL của Y1/Y2 để chỉnh cho chính xác. Sai lệch nhỏ chỉ làm lệch tần số vài ppm.
 - **Cảnh báo `Deprecated symbol NRF_PLATFORM_LUMOS`** khi build đến từ chính NCS 3.4.0 và xuất hiện với mọi board nRF54L, có thể bỏ qua.
-- **Tạo app mới**: copy `apps/hw_test` thành `apps/<ten_app>`, sửa `prj.conf` và `src/`, rồi chạy `make APP=apps/<ten_app> build flash`. Thêm `${workspaceFolder}/build/<ten_app>/<ten_app>/compile_commands.json` vào danh sách `compileCommands` trong [.vscode/c_cpp_properties.json](.vscode/c_cpp_properties.json) để IntelliSense hiểu app mới. Nếu cần đổi chân cho riêng app, thêm file `apps/<ten_app>/boards/me54bs62_nrf54l15_cpuapp.overlay`.
+- **Tạo app mới**: copy `apps/bike` thành `apps/<ten_app>` (giữ phần nạp `lib/` trong `CMakeLists.txt`: `list(APPEND ZEPHYR_EXTRA_MODULES ...)` + `target_include_directories`), sửa `prj.conf` (bật các module `CONFIG_ME54_*` cần dùng) và `src/`, rồi chạy `make APP=apps/<ten_app> build flash`. Thêm `${workspaceFolder}/build/<ten_app>/<ten_app>/compile_commands.json` vào danh sách `compileCommands` trong [.vscode/c_cpp_properties.json](.vscode/c_cpp_properties.json) để IntelliSense hiểu app mới. Nếu cần đổi chân cho riêng app, thêm file `apps/<ten_app>/boards/me54bs62_nrf54l15_cpuapp.overlay`.
 # Helmet_ble6

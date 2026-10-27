@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Phạm vi | Toàn bộ phần **phát / thu âm thanh quảng bá (Auracast, BIG/BIS)** của dự án: mũ thu broadcast (`apps/main/src/broadcast_sink.c`, `hub_link.c`, `audio_out.c`) và bộ trung tâm trên xe (`apps/bike`) |
+| Phạm vi | Toàn bộ phần **phát / thu âm thanh quảng bá (Auracast, BIG/BIS)** của dự án: mũ thu broadcast (`apps/main/src/features/broadcast/broadcast_sink.c`, `hub_link.c`, `lib/services/audio_out.c`) và bộ trung tâm trên xe (`apps/bike`) |
 | Giai đoạn | 19/10/2026 – 23/10/2026, nhánh `feature/broadcast-sink` |
 | Trạng thái | Commit `09aea4a` (23/10/2026): **broadcast ổn định với 1 xe + 2 mũ** (theo người thử trên mạch) |
 | Tài liệu liên quan | Thiết kế mũ thu Auracast: [HELMET_AURACAST.md](HELMET_AURACAST.md). Thiết kế bộ trung tâm trên xe: [BIKE_HUB_THIET_KE.md](BIKE_HUB_THIET_KE.md) |
@@ -50,13 +50,13 @@ Cách 2 ra đời vì cách 1 không chạy được trên máy thử (mục 4).
 
 | Thành phần | File | Việc làm |
 |---|---|---|
-| Mũ: thu broadcast | `apps/main/src/broadcast_sink.c` | Broadcast Sink + Scan Delegator (BASS), chọn BIS, đồng bộ PA / BIG |
-| Mũ: vào xe | `apps/main/src/hub_link.c` | Kết nối xe, đọc Join Info (ID, địa chỉ, mã), ngắt |
-| Mũ: phát ra loa | `apps/main/src/audio_out.c` | Giải mã LC3, ghép L/R, bù trôi, I2S |
-| Xe: nhận từ điện thoại | `apps/bike/src/phone_sink.c` | BAP Unicast Server, chỉ chiều nhận |
-| Xe: phát cho mũ | `apps/bike/src/bcast_source.c` | BAP Broadcast Source, chuyển nguyên khung LC3, khung im lặng, dựng lại BIG |
-| Xe: ghép mũ | `apps/bike/src/bhs.c` | Bike Hub Service, cửa sổ ghép 60 s |
-| Xe: kết nối, shell | `apps/bike/src/main.c` | Quảng bá cho điện thoại, bảo mật, chu kỳ ACL, `bike …` |
+| Mũ: thu broadcast | `apps/main/src/features/broadcast/broadcast_sink.c` | Broadcast Sink + Scan Delegator (BASS), chọn BIS, đồng bộ PA / BIG |
+| Mũ: vào xe | `apps/main/src/features/broadcast/hub_link.c` | Kết nối xe, đọc Join Info (ID, địa chỉ, mã), ngắt |
+| Mũ: phát ra loa | `lib/services/audio_out.c` (+ `lib/core/pcm_ring.c`, `resampler.c`, `mixer.c`, `lib/hal/i2s_out.c`) | Giải mã LC3, ghép L/R, bù trôi, I2S |
+| Xe: nhận từ điện thoại | `apps/bike/src/features/phone/phone_sink.c` | BAP Unicast Server, chỉ chiều nhận |
+| Xe: phát cho mũ | `apps/bike/src/features/broadcast/bcast_source.c` | BAP Broadcast Source, chuyển nguyên khung LC3, khung im lặng, dựng lại BIG |
+| Xe: ghép mũ | `apps/bike/src/features/broadcast/bhs.c` (giao thức: `lib/proto/include/me54/proto/bhs_proto.h`) | Bike Hub Service, cửa sổ ghép 60 s |
+| Xe: kết nối, shell | `apps/bike/src/app/main.c` | Quảng bá cho điện thoại, bảo mật, chu kỳ ACL, `bike …` |
 
 ---
 

@@ -1,0 +1,116 @@
+# Thu vien dung chung lib/ (lop 1-2), Zephyr module. Moi app bat module minh can trong prj.conf; module bat
+# o lop tren tu chon cac module lop duoi no dung.
+
+menu "ME54BS62 shared library (lib/)"
+
+config ME54_LIB_CORE
+	bool
+
+config ME54_LIB_HAL
+	bool
+
+config ME54_LIB_SERVICES
+	bool
+
+comment "Core: pure algorithms (no Zephyr)"
+
+config ME54_CORE_PROMPTS
+	bool "Prompt generator and catalog"
+	select ME54_LIB_CORE
+
+config ME54_CORE_AUDIO_DSP
+	bool "PCM ring with clock slip, fixed-ratio resampler, mixer"
+	select ME54_LIB_CORE
+
+config ME54_CORE_VOICE_DSP
+	bool "Voice DSP: high-pass, NLMS echo canceller, NLP, noise suppression, AGC"
+	select ME54_LIB_CORE
+
+config ME54_CORE_MLX90632
+	bool "MLX90632 temperature formulas"
+	select ME54_LIB_CORE
+
+config ME54_CORE_LC3_SILENCE
+	bool "Pre-encoded LC3 silence frame"
+	depends on LIBLC3
+	select ME54_LIB_CORE
+
+comment "HAL: board hardware"
+
+config ME54_HAL_I2S_OUT
+	bool "I2S20 output to 2 x MAX98357A"
+	select ME54_LIB_HAL
+
+config ME54_HAL_I2S_OUT_BLOCK_BYTES
+	int "I2S block size (bytes)"
+	default 1920
+	depends on ME54_HAL_I2S_OUT
+	help
+	  1920 B = 10 ms stereo at 48 kHz (helmet music). 640 B is enough for 16 kHz prompts only.
+
+config ME54_HAL_I2S_OUT_BLOCK_COUNT
+	int "I2S blocks in the pool"
+	default 6
+	depends on ME54_HAL_I2S_OUT
+
+config ME54_HAL_MIC_IN
+	bool "2 PDM microphones (PDM20)"
+	select ME54_LIB_HAL
+
+config ME54_HAL_KEYS
+	bool "Board buttons (gpio-keys)"
+	select ME54_LIB_HAL
+
+config ME54_HAL_STATUS_LED
+	bool "Status LED patterns"
+	select ME54_LIB_HAL
+
+config ME54_HAL_POWER
+	bool "System OFF, power-button boot check, VDD measurement"
+	select ME54_LIB_HAL
+
+config ME54_HAL_MLX90632
+	bool "MLX90632 I2C access"
+	select ME54_LIB_HAL
+	select ME54_CORE_MLX90632
+
+comment "Services: threads and queues on top of HAL + core"
+
+config ME54_SVC_AUDIO_STREAM
+	bool "LC3 stream configuration from BAP codec config"
+	select ME54_LIB_SERVICES
+
+config ME54_SVC_AUDIO_OUT
+	bool "Helmet audio output: LC3 decode, clock slip, prompts, resampler, I2S"
+	select ME54_LIB_SERVICES
+	select ME54_SVC_AUDIO_STREAM
+	select ME54_HAL_I2S_OUT
+	select ME54_CORE_PROMPTS
+	select ME54_CORE_AUDIO_DSP
+
+config ME54_SVC_AUDIO_OUT_STREAMS
+	int "Audio output streams"
+	default 2
+	depends on ME54_SVC_AUDIO_OUT
+
+config ME54_SVC_VOICE_TX
+	bool "Voice uplink: microphones, DSP, LC3 encode, SDU send"
+	depends on ME54_SVC_AUDIO_OUT
+	select ME54_LIB_SERVICES
+	select ME54_SVC_AUDIO_STREAM
+	select ME54_HAL_MIC_IN
+	select ME54_CORE_VOICE_DSP
+	select ME54_CORE_AUDIO_DSP
+
+config ME54_SVC_BUTTONS
+	bool "Helmet button gestures"
+	select ME54_LIB_SERVICES
+	select ME54_HAL_KEYS
+
+config ME54_SVC_PROMPT_PLAYER
+	bool "Stand-alone prompt player (I2S used for prompts only)"
+	select ME54_LIB_SERVICES
+	select ME54_HAL_I2S_OUT
+	select ME54_CORE_PROMPTS
+
+endmenu

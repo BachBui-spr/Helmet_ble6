@@ -7,13 +7,13 @@
 #
 # Dung:
 #   scripts/rtt.sh [BUILD_DIR] [-l LOGFILE]
-#   JLINK_SN=69750999 scripts/rtt.sh build/hw_test   (mac dinh: build/Helmet)
+#   JLINK_SN=69750999 scripts/rtt.sh build/bike   (mac dinh: build/main)
 # Thoat: Ctrl+C
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="$ROOT/build/Helmet"
+BUILD_DIR="$ROOT/build/main"
 LOGFILE=""
 
 while [ $# -gt 0 ]; do

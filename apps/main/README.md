@@ -1,26 +1,29 @@
 # apps/main: Helmet đầy đủ chức năng
 
-Firmware hiện thực bản thiết kế [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md](../../docs/HELMET_THIET_KE_CHUC_NANG_MOI.md). Phần nghe nhạc kế thừa từ `apps/Helmet`; `apps/Helmet` giữ nguyên, không bị sửa.
+Firmware hiện thực bản thiết kế [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md](../../docs/HELMET_THIET_KE_CHUC_NANG_MOI.md), thêm intercom ([docs/HELMET_THIET_KE_INTERCOM.md](../../docs/HELMET_THIET_KE_INTERCOM.md)) và Auracast / vào xe ([docs/HELMET_AURACAST.md](../../docs/HELMET_AURACAST.md)). Mã chia theo lớp: phần riêng của mũ nằm trong `src/`, phần dùng chung với xe nằm trong `lib/` ở gốc project (xem [README.md](../../README.md), mục *Kiến trúc mã nguồn*).
 
 | Chức năng | File |
 |---|---|
-| Nghe nhạc LE Audio; `audio_out` thế hệ 2: lấy mẫu lại theo tần số I2S thật, bù trôi clock từng mẫu, âm báo | `le_audio.c`, `audio_out.c`, `prompts.c` |
-| Đàm thoại: ASE source, micro PDM, khử vọng NLMS, NLP, giảm ồn, AGC, mã hóa LC3, gửi SDU | `mic_in.c`, `voice_dsp.c`, `voice_tx.c` |
-| Cuộc gọi: TBS client (nghe / từ chối / kết thúc), MICP (tắt micro) | `call_ctrl.c` |
-| Cử chỉ nút: ngắn, đúp, giữ, giữ lâu, lặp, tổ hợp | `buttons.c` |
-| Nguồn: System OFF, bật bằng giữ Power 2 s, tự tắt, quảng bá chậm, cảnh báo VDD | `power.c` |
-| Nhiệt độ MLX90632 + Health Thermometer Service | `mlx90632.c`, `thermo.c` |
-| Bộ điều khiển ứng dụng (máy trạng thái thiết bị), quảng bá, shell | `main.c` |
+| Bộ điều khiển (máy trạng thái thiết bị, hàng sự kiện, heartbeat), quảng bá + kết nối, cử chỉ → hành động, shell, cài đặt, quy trình tắt máy | `src/app/`: `app_ctrl.c`, `app_bt.c`, `app_gesture.c`, `app_shell.c`, `app_config.c`, `power.c`; API cho lớp chức năng: `app.h` |
+| Nghe nhạc + cuộc gọi với điện thoại: BAP Unicast Server, VCP + MCP, TBS client + MICP | `src/features/phone/`: `le_audio.c`, `media_ctrl.c`, `call_ctrl.c` |
+| Intercom mũ–mũ | `src/features/intercom/`: `intercom.c`, `ic_service.c`, `ic_audio.c` |
+| Nghe Auracast, vào xe bằng nút | `src/features/broadcast/`: `broadcast_sink.c`, `hub_link.c` |
+| Nhiệt độ + Health Thermometer Service | `src/features/thermo/thermo.c` |
+| Chẩn đoán: ghi SDU ra RTT, log truy cập GATT | `src/debug/`: `capture.c`, `gatt_trace.c` |
+| Đường ra loa: giải mã LC3, bù trôi clock từng mẫu, âm báo, lấy mẫu lại theo tần số I2S thật | `lib/services/audio_out.c` + `lib/core/pcm_ring.c`, `resampler.c`, `mixer.c`, `prompts.c` + `lib/hal/i2s_out.c` |
+| Đàm thoại (chiều lên): micro PDM, khử vọng NLMS, NLP, giảm ồn, AGC, mã hóa LC3, gửi SDU | `lib/services/voice_tx.c` + `lib/core/voice_dsp.c` + `lib/hal/mic_in.c` |
+| Cử chỉ nút: ngắn, đúp, giữ, giữ lâu, lặp, tổ hợp | `lib/services/buttons.c` + `lib/hal/keys.c` |
+| Phần cứng nguồn (System OFF, giữ Power 2 s, đo VDD), LED, MLX90632 | `lib/hal/power_hw.c`, `status_led.c`, `mlx90632.c` + `lib/core/mlx90632_calc.c` |
 
 ## Build, nạp
 
 ```bash
-make APP=apps/main build        # thư mục build: build/main
-make APP=apps/main flash
-make APP=apps/main rtt
+make build        # apps/main là app mặc định; thư mục build: build/main
+make flash
+make rtt
 ```
 
-Bản build đã kiểm tra: RRAM 31.4 % (490 KB), RAM 80.8 % (212 KB), không có cảnh báo từ mã của app.
+Bản build đã kiểm tra (27/10/2026, sau khi tổ chức lại theo lớp): FLASH 41.45 % (646 924 B), RAM 95.76 % (251 027 B), không có cảnh báo từ mã của app.
 
 IntelliSense: `${workspaceFolder}/build/main/main/compile_commands.json` đã có trong danh sách `compileCommands` của `.vscode/c_cpp_properties.json` (đứng đầu danh sách, và danh sách dự phòng `includePath` cũng trỏ vào `apps/main/src` + `build/main`). Cần chạy `make APP=apps/main build` ít nhất một lần để file đó tồn tại.
 
@@ -46,12 +49,12 @@ IntelliSense: `${workspaceFolder}/build/main/main/compile_commands.json` đã c�
 | `voice_dsp.c` chạy trên PC, tiếng vọng tổng hợp (trễ 40 mẫu + phản xạ) | ✅ AEC hội tụ; NLP một mình giảm 16.5 dB |
 | `voice_dsp.c`, cả hai cùng nói | ✅ Giọng người đội mũ giữ nguyên (−17.0 dBFS, bằng khi nói một mình) |
 | `voice_dsp.c`, giảm ồn trên tín hiệu ngắt quãng | ✅ Đoạn có tiếng −0.17 dB, ồn nền −9.5 dB |
-| `mlx90632.c` với 17 bộ số kiểm thử chính thức của Melexis (`test/TestDSP.c`) | ✅ Tất cả đạt (dung sai 0.01) |
+| Công thức MLX90632 (nay là `lib/core/mlx90632_calc.c`) với 17 bộ số kiểm thử chính thức của Melexis (`test/TestDSP.c`) | ✅ Tất cả đạt (dung sai 0.01) |
 | Chạy trên mạch, điện thoại thật | ⏳ Chưa: firmware chưa được nạp |
 
 ## Còn phải làm / cần đo trên mạch
 
 - Mọi số liệu đánh dấu **[Cần đo]** trong tài liệu thiết kế: CPU khi gọi (`helmet perf`), stack (`kernel stacks`), dòng khi tắt, độ trễ.
-- Tự tắt khi VDD < 3.0 V đang **tắt** (`LOWBATT_POWER_OFF 0` trong `power.c`). Chỉ bật sau khi `helmet vdd` đo đúng trên mạch, để tránh tắt máy nhầm.
+- Tự tắt khi VDD < 3.0 V đang **tắt** (`LOWBATT_POWER_OFF 0` trong `src/app/power.c`). Chỉ bật sau khi `helmet vdd` đo đúng trên mạch, để tránh tắt máy nhầm.
 - Ghi tín hiệu micro và tham chiếu qua RTT để chỉnh AEC (thiết kế mục 4.10) chưa làm: cần sửa `scripts/helmet_audio.py` (nằm ngoài `apps/main`).
 - Chưa dùng CMSIS-DSP. `voice_dsp.c` tự viết NLMS, biquad và FFT 512 bằng C thuần, để chạy được trên PC và không phải cấu hình bảng FFT của CMSIS.

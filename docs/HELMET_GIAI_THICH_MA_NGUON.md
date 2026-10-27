@@ -1,5 +1,7 @@
 # Helmet: giải thích chi tiết mã nguồn
 
+> **Tài liệu lưu trữ (27/10/2026):** tài liệu này mô tả `apps/Helmet`, đã gỡ khỏi cây mã. Lấy lại mã tương ứng từ lịch sử git: `git show a1ab029:apps/Helmet/...`. Cấu trúc mã nguồn hiện tại: [README.md](../README.md), mục *Kiến trúc mã nguồn*; firmware mũ hiện tại là `apps/main`.
+
 | | |
 |---|---|
 | Áp dụng cho | `apps/Helmet` (firmware chính), board `me54bs62`, `scripts/helmet_audio.py` |

@@ -1,5 +1,7 @@
 # Helmet BLE (ME54BS62 / nRF54L15): Tài liệu thiết kế hệ thống firmware test
 
+> **Tài liệu lưu trữ (27/10/2026):** tài liệu này mô tả `apps/hw_test`, đã gỡ khỏi cây mã. Lấy lại mã tương ứng từ lịch sử git: `git show a1ab029:apps/hw_test/...`. Cấu trúc mã nguồn hiện tại: [README.md](../README.md), mục *Kiến trúc mã nguồn*; firmware mũ hiện tại là `apps/main`.
+
 | | |
 |---|---|
 | Phiên bản tài liệu | 0.1 |

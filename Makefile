@@ -1,14 +1,15 @@
 # ============================================================
 #  ME54BS62 (nRF54L15) - lenh tat build / nap / log
-#  App chinh: apps/Helmet (tai nghe LE Audio). apps/hw_test = firmware test phan cung.
+#  App: apps/main (mu bao hiem, mac dinh), apps/bike (bo trung tam tren xe).
+#  Ma dung chung cua hai app (lop HAL / core / dich vu / giao thuc): lib/
 #  Vi du:  make build          make flash         make rtt         make audio
-#          make APP=apps/hw_test build flash      (firmware test phan cung)
+#          make APP=apps/bike build flash         (bo trung tam tren xe)
 #          make JLINK_SN=69750999 flash   (khi cam nhieu J-Link)
 # ============================================================
 SHELL := /bin/bash
 
 ROOT      := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
-APP       ?= apps/Helmet
+APP       ?= apps/main
 BOARD     ?= me54bs62/nrf54l15/cpuapp
 BUILD_DIR ?= build/$(notdir $(APP))
 UART_PORT ?= /dev/ttyACM0
@@ -36,13 +37,13 @@ help:
 	@echo "make recover        - mo khoa + XOA TOAN BO chip (khi bi APPROTECT)"
 	@echo "make reset          - reset chip"
 	@echo "make rtt            - xem log + shell qua RTT (chi can SWD)"
-	@echo "make audio          - nghe/luu am thanh Helmet nhan duoc (thay cho make rtt)"
+	@echo "make audio          - nghe/luu am thanh mu nhan duoc (thay cho make rtt)"
 	@echo "make uart           - xem log + shell qua UART $(UART_PORT) @ $(UART_BAUD)"
 	@echo "make menuconfig     - chinh Kconfig"
 	@echo "make debug          - debug bang GDB qua J-Link"
 	@echo "make devices / info - liet ke probe / thong tin chip"
 	@echo "make restore-factory- nap lai firmware goc da sao luu"
-	@echo "make APP=apps/hw_test build flash - firmware test phan cung"
+	@echo "make APP=apps/bike build flash    - bo trung tam tren xe (bike hub)"
 
 build:
 	$(ENV) west build -b $(BOARD) -d $(BUILD_DIR) $(APP) -- -DBOARD_ROOT=$(ROOT) $(EXTRA)
@@ -67,7 +68,7 @@ reset:
 rtt:
 	JLINK_SN=$(JLINK_SN) $(ROOT)/scripts/rtt.sh $(BUILD_DIR)
 
-# Chi danh cho apps/Helmet (RTT kenh 1 "HelmetAudio"). Chay bang python3 cua he thong
+# Chi danh cho apps/main (RTT kenh 1 "HelmetAudio", bat bang "helmet capture on"). Chay bang python3 cua he thong
 # (can liblc3 + paplay), KHONG qua env.sh. Them tuy chon: make audio AUDIO_OPTS="--no-play"
 audio:
 	$(ROOT)/scripts/helmet_audio.py --build $(BUILD_DIR) $(if $(JLINK_SN),--sn $(JLINK_SN),) $(AUDIO_OPTS)

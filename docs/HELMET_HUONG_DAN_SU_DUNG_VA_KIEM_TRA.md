@@ -392,7 +392,7 @@ make APP=apps/main reset          # reset / đánh thức khi máy đang OFF
 make APP=apps/main audio          # (thay cho rtt) nghe lại âm thanh Helmet nhận, lưu WAV
 ```
 
-- `Makefile` mặc định là `apps/Helmet`, nên **lệnh nào cũng phải kèm `APP=apps/main`**.
+- `Makefile` mặc định là `apps/main` (từ 27/10/2026), nên `make build`, `make flash`, `make rtt` dùng luôn cho mũ; xe cần `APP=apps/bike`.
 - Khung dây J-Link: xem [PINOUT.md](PINOUT.md). Mạch phải được cấp nguồn riêng (pin hoặc USB-C).
 - Mỗi lúc chỉ mở **một** phiên RTT: `make rtt` và `make audio` không chạy cùng lúc.
 - ⚠ Khi J-Link đang gắn, chip chỉ **giả lập** System OFF. Muốn đo dòng tắt máy thật phải rút J-Link.
@@ -539,9 +539,10 @@ Làm theo thứ tự. Mỗi mức chỉ cần phần cứng của mức đó và
 
 ### 13.4 Mức 3: thêm board micro
 
-1. **Kiểm tra micro bằng `hw_test` trước**, vì `apps/main` chỉ bật micro khi đang có cuộc gọi:
+1. **Kiểm tra micro bằng `hw_test` trước**, vì `apps/main` chỉ bật micro khi đang có cuộc gọi. `apps/hw_test` đã gỡ khỏi cây mã (27/10/2026); lấy lại từ lịch sử git vào một thư mục tạm rồi build:
    ```bash
-   make APP=apps/hw_test build flash && make APP=apps/hw_test rtt
+   git worktree add /tmp/hw_test a1ab029 && make -C /tmp/hw_test APP=apps/hw_test build flash
+   make -C /tmp/hw_test APP=apps/hw_test rtt
    hw mic 1000        # phòng yên tĩnh, rồi vỗ tay
    ```
    Đạt khi: `L != R` gần 100 % số mẫu; AC khoảng −60…−75 dBFS lúc yên tĩnh và tăng khi vỗ tay.
@@ -609,7 +610,7 @@ Làm theo thứ tự. Mỗi mức chỉ cần phần cứng của mức đó và
 | 2 | **Cuộc gọi chờ:** đang gọi mà có cuộc thứ hai, nhấn **Call ngắn sẽ kết thúc cuộc đang nói** (không nghe cuộc mới). Sau đó cuộc chờ chưa nghe được bằng nút | Khác với tài liệu thiết kế (mục 5.2). Hiện phải nghe cuộc chờ trên điện thoại |
 | 3 | **Âm báo đè chuông:** khi đang phát chuông cục bộ, âm báo khác (Power ngắn, âm lượng chạm giới hạn) **thay thế** chuông, và chuông **không phát lại** | Đổ chuông cục bộ nên tránh nhấn Power ngắn hoặc chỉnh âm lượng tới giới hạn |
 | 4 | Không đo được % pin; chưa bật tự tắt khi pin cạn | Chỉ có cảnh báo "pin sắp hết" theo VDD |
-| 5 | Micro chỉ chạy khi có cuộc gọi; không có lệnh thử micro riêng trong `apps/main`; **không phát hiện được board micro chưa nối** | Thử micro bằng `apps/hw_test` (mục 13.4) |
+| 5 | Micro chỉ chạy khi có cuộc gọi; không có lệnh thử micro riêng trong `apps/main`; **không phát hiện được board micro chưa nối** | Thử micro bằng `apps/hw_test` lấy từ lịch sử git (mục 13.4) |
 | 6 | Không có gọi lại số cuối, không có trợ lý giọng nói | Giới hạn của chuẩn TBS và của thiết kế |
 | 7 | Chiều gửi chỉ hỗ trợ khung 10 ms, 16 kHz (16_1, 16_2) | Điện thoại nào chỉ dùng 7.5 ms cho cuộc gọi sẽ không chuyển cuộc gọi sang mũ |
 | 8 | Chưa ghi được tín hiệu micro và tham chiếu qua RTT để chỉnh khử vọng | Cần sửa `scripts/helmet_audio.py` |

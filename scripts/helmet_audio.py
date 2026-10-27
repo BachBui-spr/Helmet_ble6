@@ -2,7 +2,7 @@
 """Nghe lai am thanh LE Audio ma Helmet nhan duoc, lay ve qua J-Link (SEGGER RTT kenh 1).
 
 Firmware Helmet chep nguyen cac goi LC3 nhan tu dien thoai vao kenh RTT 1
-(apps/Helmet/src/capture.c). Script nay:
+(apps/main/src/debug/capture.c). Script nay:
   - ket noi J-Link (chi can day SWD), dat dia chi RTT lay tu file ELF,
   - gui lenh "helmet capture on" qua shell RTT,
   - giai ma LC3 bang liblc3 cua he thong (cung thu vien voi firmware),
@@ -12,7 +12,7 @@ Firmware Helmet chep nguyen cac goi LC3 nhan tu dien thoai vao kenh RTT 1
 Chi dung thu vien chuan cua Python + libjlinkarm.so (SEGGER) + liblc3.so.1 (he thong).
 
 Dung:
-  scripts/helmet_audio.py                    # build/Helmet, phat loa + luu WAV vao build/audio/
+  scripts/helmet_audio.py                    # build/main, phat loa + luu WAV vao build/audio/
   scripts/helmet_audio.py --no-play          # chi luu WAV
   scripts/helmet_audio.py --sink <ten>       # chon loa phat (xem: pactl list short sinks)
   scripts/helmet_audio.py --raw cap.bin      # luu them du lieu tho de giai ma lai sau
@@ -798,7 +798,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0],
                                  formatter_class=argparse.RawDescriptionHelpFormatter,
                                  epilog=__doc__.split("\n\n", 1)[1])
-    ap.add_argument("--build", type=Path, default=ROOT / "build/Helmet",
+    ap.add_argument("--build", type=Path, default=ROOT / "build/main",
                     help="thu muc build cua Helmet (de lay dia chi RTT)")
     ap.add_argument("--sn", default=os.environ.get("JLINK_SN"), help="so serial J-Link")
     ap.add_argument("--device", default="nRF54L15_M33", help="ten chip cho J-Link")

@@ -1,0 +1,10 @@
+# Lop HAL: cham phan cung cua board (driver Zephyr / nrfx)
+zephyr_library_named(me54_hal)
+target_include_directories(me54_hal PRIVATE include ${ME54_LIB_DIR}/core/include)
+
+zephyr_library_sources_ifdef(CONFIG_ME54_HAL_I2S_OUT    i2s_out.c)
+zephyr_library_sources_ifdef(CONFIG_ME54_HAL_MIC_IN     mic_in.c)
+zephyr_library_sources_ifdef(CONFIG_ME54_HAL_KEYS       keys.c)
+zephyr_library_sources_ifdef(CONFIG_ME54_HAL_STATUS_LED status_led.c)
+zephyr_library_sources_ifdef(CONFIG_ME54_HAL_POWER      power_hw.c)
+zephyr_library_sources_ifdef(CONFIG_ME54_HAL_MLX90632   mlx90632.c)
