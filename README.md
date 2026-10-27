@@ -22,7 +22,6 @@ Tài liệu thiết kế đầy đủ (yêu cầu, kiến trúc, luồng dữ li
 │   └── src/                    #   app/ (lớp 4) · features/{phone,broadcast}/ (lớp 3)
 ├── scripts/rtt.sh              # mở terminal RTT (log + shell) chỉ qua dây SWD
 ├── scripts/helmet_audio.py     # nghe/lưu WAV âm thanh mũ nhận được, qua J-Link (make audio)
-├── backup/                     # firmware gốc đọc ra từ chip trước lần nạp đầu tiên
 ├── docs/                       # tài liệu thiết kế, datasheet, schematic, PINOUT.md
 ├── tools/                      # udev rule chặn ModemManager
 └── .vscode/                    # cấu hình IntelliSense và các task
@@ -136,15 +135,17 @@ Xem [docs/PINOUT.md](docs/PINOUT.md). Header "SW debugger" trên Helmet board c�
 
 **Trước khi làm PCB bản sau, đọc mục "⚠ Các điểm cần xem lại" trong [docs/PINOUT.md](docs/PINOUT.md)**, đặc biệt là I2C của MLX90632 đang bị đặt ở hai miền nguồn khác nhau.
 
-## Firmware gốc đã sao lưu
+## Firmware gốc của module
 
-Trước lần nạp đầu tiên, chip đang chứa một firmware khoảng 52 KB, build bằng NCS v3.0.2 (có thể là firmware test RF của nhà sản xuất). Thư mục `backup/` có:
+Trước lần nạp đầu tiên, chip chứa một firmware khoảng 52 KB của nhà sản xuất (NCS v3.0.2, có thể là firmware test RF). Bản sao lưu (RRAM, UICR, file `.hex` để nạp lại) đã gỡ khỏi cây mã ngày 27/10/2026; vẫn lấy lại được từ lịch sử git:
 
-- `rram_factory_0x0_1524K.bin`: toàn bộ RRAM
-- `uicr_factory_0xFFD000.bin`: UICR (có 19 word đã được ghi từ xưởng)
-- `factory_fw_0x0-0xD000.hex`: bản để nạp lại
+```bash
+git show a1ab029:backup/factory_fw_0x0-0xD000.hex > /tmp/factory_fw.hex
+source ./env.sh && nrfutil device program --firmware /tmp/factory_fw.hex \
+    --options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE,verify=VERIFY_READ,reset=RESET_SYSTEM
+```
 
-Nạp lại bằng `make restore-factory`. Luồng này đã được thử: sau khi khôi phục, RRAM và UICR khớp từng byte với bản backup.
+(`backup/rram_factory_0x0_1524K.bin` và `backup/uicr_factory_0xFFD000.bin` lấy ra theo cùng cách.)
 
 ## Lưu ý và xử lý sự cố
 

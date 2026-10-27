@@ -4,9 +4,6 @@ board:
   vendor: minew
   socs:
   - name: nrf54l15
-    variants:
-    - name: xip
-      cpucluster: cpuflpr
 runners:
   run_once:
     '--recover':
@@ -17,8 +14,6 @@ runners:
         groups:
           - boards:
               - me54bs62/nrf54l15/cpuapp
-              - me54bs62/nrf54l15/cpuflpr
-              - me54bs62/nrf54l15/cpuflpr/xip
     '--erase':
       - runners:
           - nrfjprog
@@ -28,8 +23,6 @@ runners:
         groups:
           - boards:
               - me54bs62/nrf54l15/cpuapp
-              - me54bs62/nrf54l15/cpuflpr
-              - me54bs62/nrf54l15/cpuflpr/xip
     '--reset':
       - runners:
           - nrfjprog
@@ -39,5 +32,3 @@ runners:
         groups:
           - boards:
               - me54bs62/nrf54l15/cpuapp
-              - me54bs62/nrf54l15/cpuflpr
-              - me54bs62/nrf54l15/cpuflpr/xip

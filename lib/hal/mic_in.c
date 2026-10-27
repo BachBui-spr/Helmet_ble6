@@ -4,7 +4,7 @@
  * - 16 kHz, 16 bit, stereo (2 micro tren cung 1 duong DATA, chon L/R bang chan SELECT).
  *   nRF54L15: 32 MHz / 25 = 1.28 MHz, ti le 80 -> dung 16 000 Hz (cung thach anh voi I2S).
  * - Khoi 10 ms = 160 mau x 2 kenh x 2 B = 640 B, 12 khoi trong kho. Driver giu 2 khoi cho DMA
- *   + toi da 10 khoi cho doc (queue-size cua pdm20, apps/main/boards/me54bs62_nrf54l15_cpuapp.overlay)
+ *   + toi da 10 khoi cho doc (queue-size cua pdm20 trong boards/minew/me54bs62/me54bs62_nrf54l15_cpuapp.dts)
  *   -> thread giong noi duoc phep cham toi ~100 ms.
  * - Hang doi day / het khoi: driver TU DUNG PDM va khong tu chay lai (dmic_nrfx_pdm.c,
  *   stop_pdm) -> mic_in_restart() de voice_tx.c khoi dong lai.

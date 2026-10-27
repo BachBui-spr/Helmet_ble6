@@ -27,7 +27,7 @@ SN_OPT    := $(if $(JLINK_SN),--serial-number $(JLINK_SN),)
 LINK_CDB  := ln -sfn $(abspath $(BUILD_DIR))/$(notdir $(APP))/compile_commands.json $(ROOT)/build/compile_commands.json
 
 .PHONY: help build pristine flash erase-flash recover reset rtt audio uart menuconfig \
-        guiconfig debug devices info clean restore-factory
+        guiconfig debug devices info clean
 
 help:
 	@echo "make build          - build $(APP) cho $(BOARD)"
@@ -42,7 +42,6 @@ help:
 	@echo "make menuconfig     - chinh Kconfig"
 	@echo "make debug          - debug bang GDB qua J-Link"
 	@echo "make devices / info - liet ke probe / thong tin chip"
-	@echo "make restore-factory- nap lai firmware goc da sao luu"
 	@echo "make APP=apps/bike build flash    - bo trung tam tren xe (bike hub)"
 
 build:
@@ -90,10 +89,6 @@ devices:
 
 info:
 	$(ENV) nrfutil device device-info $(SN_OPT)
-
-restore-factory:
-	$(ENV) nrfutil device program --firmware $(ROOT)/backup/factory_fw_0x0-0xD000.hex \
-		--options chip_erase_mode=ERASE_RANGES_TOUCHED_BY_FIRMWARE,verify=VERIFY_READ,reset=RESET_SYSTEM $(SN_OPT)
 
 clean:
 	rm -rf $(BUILD_DIR)

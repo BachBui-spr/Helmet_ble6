@@ -164,6 +164,11 @@
 &pdm20 {
 	status = "okay";
 	clock-source = "PCLK32M";
+	/* Hang khoi da thu 10 (mac dinh 4) = 100 ms: driver dung han PDM khi hang day, hang lon cho
+	 * phep thread giong noi (lib/services/voice_tx.c) cham thoang qua ma micro khong bi dung.
+	 * Khong vuot MIC_BLOCK_COUNT (12, lib/hal/mic_in.c) tru 2 khoi DMA dang giu.
+	 */
+	queue-size = <10>;
 	pinctrl-0 = <&pdm20_default>;
 	pinctrl-1 = <&pdm20_sleep>;
 	pinctrl-names = "default", "sleep";
