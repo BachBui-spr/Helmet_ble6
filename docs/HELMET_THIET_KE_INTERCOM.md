@@ -20,6 +20,9 @@ Cách đọc:
 - Mục 4–8: ghép đôi, liên kết, phiên đàm thoại, ưu tiên với điện thoại, nút và âm báo.
 - Mục 9–14: tổng hợp thay đổi, chẩn đoán, kiểm thử, mở rộng, rủi ro, phụ lục.
 
+
+> **Ghi chú 27/10/2026:** mã nguồn đã được tổ chức lại theo lớp. `helmet.h` / `main.c` nay tách thành `apps/main/src/app/` (lớp ứng dụng, `app/app.h`), `apps/main/src/features/<chức năng>/` và thư viện dùng chung `lib/` (`hal/`, `core/`, `services/`, `proto/`). Các tên file trong tài liệu này là tên tại thời điểm thiết kế; vị trí hiện tại xem [README.md](../README.md), mục *Kiến trúc mã nguồn*.
+
 ---
 
 ## Mục lục
@@ -659,7 +662,7 @@ Air time ở 1M với RTN 4: tối đa 5 sự kiện con × 1.16 ms ≈ 5.8 ms m
 | Callback | Thay đổi |
 |---|---|
 | `lc3_config` | `conn` là mũ bạn thì cấp stream từ **kho intercom** (1 sink + 1 source), chỉ nhận LC3 16/32 kHz, 10 ms, mono, và trả QoS pref riêng cho intercom (1M, RTN 4, latency 20 ms). Ngược lại cấp từ kho điện thoại như hiện nay |
-| `lc3_enable`, `lc3_metadata` | **Tự kiểm ngữ cảnh**, vì ASCS **không** tự so với available contexts (trong `ascs.c` không có tham chiếu nào tới available contexts) [SDK]. Điện thoại xin Media/Game… trong lúc có phiên intercom thì từ chối bằng `METADATA_REJECTED` (lý do: Streaming Context). Mũ bạn xin luồng trong lúc mũ đang gọi điện thoại thì cũng từ chối |
+| `lc3_enable`, `lc3_metadata` | **ASCS đã tự kiểm ngữ cảnh**: khi bật `CONFIG_BT_CAP_ACCEPTOR` (mũ đang bật), ASCS từ chối metadata có Streaming Context không nằm trong available contexts **của đúng kết nối đó**, bằng `METADATA_REJECTED` (`ascs.c:2172–2181`, `is_context_available()`) [SDK]. Vì vậy chỉ cần đặt ngữ cảnh theo kết nối (dòng dưới). Kiểm tra thêm trong app chỉ cần cho trường hợp riêng: mũ bạn xin luồng trong lúc mũ đang gọi điện thoại thì từ chối |
 | `stream_started` | Stream intercom: sink thì gọi `audio_out_stream_start(0, cfg)`, source thì gọi `voice_start(stream, cfg)`, sau đó gửi `EVT_IC` (IC_EV_STREAM) |
 | Ngữ cảnh theo kết nối | `bt_pacs_conn_set_available_contexts_for_conn()` [SDK]. `ic_conn` luôn chỉ có Conversational (sink và source). `phone_conn` có NONE trong lúc có phiên intercom, và trả về mặc định (`NULL`) khi phiên kết thúc. Giá trị này tự trở về mặc định khi ACL ngắt [SDK] |
 
@@ -741,7 +744,7 @@ Hai thay đổi này bớt khoảng 20 ms, tổng còn **khoảng 60–85 ms**. 
 
 1. `media_ctrl_pause()` nếu đang phát, đặt `resume_music = true`.
 2. `bt_pacs_conn_set_available_contexts_for_conn(phone_conn, SINK/SOURCE, NONE)`. Điện thoại nhận thông báo PACS.
-3. `lc3_enable` / `lc3_metadata` từ chối các luồng mới của điện thoại (mục 6.5).
+3. Luồng mới của điện thoại xin ngữ cảnh đã bị chặn sẽ bị **ASCS tự từ chối** (`METADATA_REJECTED`, mục 6.5).
 4. Hết 1 s mà ASE của điện thoại vẫn Streaming thì gọi `bt_bap_stream_disable()` rồi `bt_bap_stream_release()`. Server được phép tự làm việc này [SDK].
 5. Khi phiên kết thúc: trả ngữ cảnh về mặc định (`NULL`), và gọi `media_ctrl_play()` nếu `resume_music`.
 
@@ -1013,7 +1016,8 @@ Kèm theo: `helmet cpu` (đã có) để đo CPU từng luồng trong lúc inter
 | ASCS đăng ký ISO server duy nhất | `zephyr/subsys/bluetooth/audio/ascs.c:3215` (`bt_iso_server_register(&iso_server)`) |
 | Chỉ nhận CIS khớp ASE ở Enabling/QoS Configured | `ascs.c:831–850` (`ascs_iso_accept`) |
 | Chỉ một ISO server | `zephyr/subsys/bluetooth/host/iso.c:1434` (`bt_iso_server_register`) |
-| ASCS không kiểm available contexts | `ascs.c`: không có tham chiếu nào; chỉ `pacs.c` dùng |
+| ASCS tự từ chối Streaming Context không available theo kết nối (khi bật CAP Acceptor) | `ascs.c:2132` (`is_context_available`), `2172–2181` |
+| ASCS chỉ cảnh báo, không từ chối, khi CCID List lạ; Zephyr chưa kiểm CCID của MCS ("TODO: check mcs") | `ascs.c:2194–2201`, `cap_acceptor.c:97–107` |
 | Metadata tối đa `CONFIG_BT_AUDIO_CODEC_CFG_MAX_METADATA_SIZE` (mặc định 4) | `Kconfig.bap:45`, kiểm tra ở `ascs.c:2253` |
 | Phụ thuộc của `BT_BAP_UNICAST_CLIENT` | `Kconfig.bap:25–32` (GATT_CLIENT, AUTO_DISCOVER_CCC, AUTO_UPDATE_MTU, CENTRAL, ISO_CENTRAL, BONDABLE) |
 | Server được tự Disable/Release stream | `include/zephyr/bluetooth/audio/bap.h` (`bt_bap_stream_disable`, `bt_bap_stream_release`: "unicast client or unicast server") |
