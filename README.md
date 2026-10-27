@@ -17,9 +17,9 @@ Tài liệu thiết kế đầy đủ (yêu cầu, kiến trúc, luồng dữ li
 │   ├── services/               #   lớp 2: dịch vụ có thread (đường ra loa, chiều lên cuộc gọi, cử chỉ nút, phát âm báo)
 │   └── proto/                  #   chỉ header: giao thức giữa các thiết bị (mũ ↔ xe, mũ ↔ mũ)
 ├── apps/main/                  # FIRMWARE MŨ (app mặc định của make), xem apps/main/README.md
-│   └── src/                    #   app/ (lớp 4) · features/{phone,intercom,broadcast,thermo}/ (lớp 3) · debug/
+│   └── src/                    #   app/ (lớp 4) · features/{phone,intercom,broadcast,thermo,nav}/ (lớp 3) · debug/
 ├── apps/bike/                  # FIRMWARE XE (bike hub), xem docs/BIKE_HUB_THIET_KE.md
-│   └── src/                    #   app/ (lớp 4) · features/{phone,broadcast}/ (lớp 3)
+│   └── src/                    #   app/ (lớp 4) · features/{phone,broadcast,nav}/ (lớp 3)
 ├── scripts/rtt.sh              # mở terminal RTT (log + shell) chỉ qua dây SWD
 ├── scripts/helmet_audio.py     # nghe/lưu WAV âm thanh mũ nhận được, qua J-Link (make audio)
 ├── docs/                       # tài liệu thiết kế, datasheet, schematic, PINOUT.md
@@ -34,11 +34,11 @@ Phần trên (riêng từng app) chia theo **chức năng**; phần dưới (dù
 | Lớp | Thư mục | Nội dung | Được làm / không được làm |
 |---|---|---|---|
 | 4. Ứng dụng | `apps/<app>/src/app/` | Máy trạng thái, khởi động BT, quảng bá, kết nối, shell, quy trình tắt máy, cử chỉ → hành động | Gọi được mọi lớp dưới |
-| 3. Chức năng | `apps/<app>/src/features/<tên>/` | Mũ: `phone`, `intercom`, `broadcast`, `thermo`. Xe: `phone`, `broadcast` | Báo lên ứng dụng chỉ qua `app/app.h` (`app_post(EVT_*)`, `app_state()`, cài đặt) |
+| 3. Chức năng | `apps/<app>/src/features/<tên>/` | Mũ: `phone`, `intercom`, `broadcast`, `thermo`, `nav`. Xe: `phone`, `broadcast`, `nav` | Báo lên ứng dụng chỉ qua `app/app.h` (`app_post(EVT_*)`, `app_state()`, cài đặt) |
 | 2. Dịch vụ | `lib/services/` | `audio_out`, `voice_tx`, `buttons`, `audio_stream`, `prompt_player` | Có thread / hàng đợi; ghép HAL + core; không biết chức năng nào đang dùng mình (báo lên bằng callback đăng ký lúc khởi động) |
 | 1a. HAL | `lib/hal/` | `i2s_out`, `mic_in`, `keys`, `status_led`, `power_hw`, `mlx90632` | Nơi duy nhất gọi driver Zephyr / nrfx của board; không có khái niệm nghiệp vụ |
 | 1b. Core | `lib/core/` | `prompts`, `pcm_ring`, `resampler`, `mixer`, `voice_dsp`, `mlx90632_calc`, `lc3_silence` | **C thuần, không include `<zephyr/...>`**: biên dịch và thử được trên PC |
-| Giao thức | `lib/proto/` | `bhs_proto.h` (mũ ↔ xe), `his_proto.h` (mũ ↔ mũ) | Chỉ header; sửa ở đây là sửa cho cả hai firmware |
+| Giao thức | `lib/proto/` | `bhs_proto.h` (mũ ↔ xe), `his_proto.h` (mũ ↔ mũ), `nav_proto.h` (quảng bá Định vị) | Chỉ header; sửa ở đây là sửa cho cả hai firmware |
 | 0. Nền tảng | `boards/`, NCS / Zephyr | Devicetree, kernel, BT host + SoftDevice Controller | Không phải code của dự án |
 
 Quy tắc:
@@ -91,8 +91,8 @@ west flash -d build/main
 
 | App | Vai trò | Tài liệu |
 |---|---|---|
-| `apps/main` | Mũ: nghe nhạc + cuộc gọi LE Audio, intercom mũ–mũ, nghe Auracast / vào xe, cảm biến nhiệt, nút, nguồn | [apps/main/README.md](apps/main/README.md), [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md](docs/HELMET_THIET_KE_CHUC_NANG_MOI.md), [docs/HELMET_THIET_KE_INTERCOM.md](docs/HELMET_THIET_KE_INTERCOM.md), [docs/HELMET_AURACAST.md](docs/HELMET_AURACAST.md) |
-| `apps/bike` | Xe (bike hub): nhận nhạc LE Audio từ điện thoại, phát Auracast cho mọi mũ, ghép mũ bằng nút | [docs/BIKE_HUB_THIET_KE.md](docs/BIKE_HUB_THIET_KE.md), [docs/BROADCAST_VAN_DE_VA_GIAI_PHAP.md](docs/BROADCAST_VAN_DE_VA_GIAI_PHAP.md) |
+| `apps/main` | Mũ: nghe nhạc + cuộc gọi LE Audio, intercom mũ–mũ, nghe Auracast / vào xe, Định vị (Channel Sounding), cảm biến nhiệt, nút, nguồn | [apps/main/README.md](apps/main/README.md), [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md](docs/HELMET_THIET_KE_CHUC_NANG_MOI.md), [docs/HELMET_THIET_KE_INTERCOM.md](docs/HELMET_THIET_KE_INTERCOM.md), [docs/HELMET_AURACAST.md](docs/HELMET_AURACAST.md), [docs/HELMET_NAV_DINH_VI.md](docs/HELMET_NAV_DINH_VI.md) |
+| `apps/bike` | Xe (bike hub): nhận nhạc LE Audio từ điện thoại, phát Auracast cho mọi mũ, ghép mũ bằng nút, phản xạ Channel Sounding khi Định vị | [docs/BIKE_HUB_THIET_KE.md](docs/BIKE_HUB_THIET_KE.md), [docs/BROADCAST_VAN_DE_VA_GIAI_PHAP.md](docs/BROADCAST_VAN_DE_VA_GIAI_PHAP.md) |
 
 Firmware cũ `apps/Helmet` (bản đầu của mũ) và firmware kiểm tra phần cứng `apps/hw_test` đã được gỡ khỏi cây mã ngày 27/10/2026. Khi cần (vd bring-up board mới), lấy lại từ lịch sử git: `git show a1ab029:apps/hw_test/src/main.c`.
 

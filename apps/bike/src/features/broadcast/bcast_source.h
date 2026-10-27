@@ -9,6 +9,7 @@
 #ifndef FEATURES_BROADCAST_BCAST_SOURCE_H_
 #define FEATURES_BROADCAST_BCAST_SOURCE_H_
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include <zephyr/shell/shell.h>
@@ -36,6 +37,8 @@ void bcast_source_push_pair(const uint8_t *left, const uint8_t *right, uint16_t 
 /* phone_sink.c: luong tu dien thoai bat dau (octets = so octet moi kenh) / ket thuc */
 void bcast_source_phone_started(uint16_t octets);
 void bcast_source_phone_stopped(void);
+/* Che do Dinh vi: tam dung / phat lai BIG (nhuong radio cho Channel Sounding) */
+void bcast_source_pause(bool pause);
 
 enum bike_code_mode {
 	BIKE_CODE_RANDOM, /* mac dinh: 16 byte ngau nhien, mu nhan qua BHS (khong ai phai go) */

@@ -10,6 +10,10 @@
  * Mu nhan broadcast ID + dia chi + ma ngau nhien, vao broadcast "Bike Audio", va tu vao lai
  * moi lan bat. So mu khong gioi han. Hub chi chuyen tiep khung LC3, khong giai ma.
  *
+ * Che do Dinh vi (features/nav/nav_hub.c, docs/HELMET_NAV_DINH_VI.md): Call ngan bat / tat. Hub
+ * tam dung Auracast, phat quang ba Dinh vi va chi PHAN XA Channel Sounding; moi mu tu do va tu
+ * tinh khoang cach toi hub.
+ *
  * Thu tu khoi dong (giong apps/main): dang ky PACS + ASCS TRUOC bt_enable() de Database Hash
  * khong doi giua cac lan khoi dong (tranh vong lap ket noi / ngat cua dien thoai).
  */
@@ -34,6 +38,7 @@
 #include "app/app.h"
 #include "features/broadcast/bcast_source.h"
 #include "features/broadcast/bhs.h"
+#include "features/nav/nav_hub.h"
 #include "features/phone/phone_sink.h"
 
 LOG_MODULE_REGISTER(bike, LOG_LEVEL_INF);
@@ -382,6 +387,11 @@ static int cmd_isoint(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_nav(const struct shell *sh, size_t argc, char **argv)
+{
+	return nav_hub_shell(sh, argc, argv);
+}
+
 static int cmd_unpair(const struct shell *sh, size_t argc, char **argv)
 {
 	int err;
@@ -404,6 +414,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(bike_cmds,
 		      "uses at most 1; more blocks the phone's audio)", cmd_rtn, 2, 0),
 	SHELL_CMD_ARG(isoint, NULL, "BIG interval: bike isoint 20 (default: 1 stereo BIS, BN 2) | "
 		      "10 (2 BIS left / right)", cmd_isoint, 2, 0),
+	SHELL_CMD_ARG(nav, NULL,
+		      "Navigation mode (bike = CS reflector): bike nav [on|off|big <pause|keep>]",
+		      cmd_nav, 1, 2),
 	SHELL_CMD(unpair, NULL, "Delete all phone bonds", cmd_unpair),
 	SHELL_SUBCMD_SET_END);
 
@@ -444,7 +457,7 @@ void hub_gesture(enum hub_gesture g)
 		unpair_all();
 		break;
 	case HUB_G_CALL:
-		LOG_INF("Call button: not used yet");
+		nav_hub_toggle();
 		break;
 	default:
 		break;
@@ -506,6 +519,10 @@ int main(void)
 	if (err) {
 		return err;
 	}
+	err = nav_hub_init();
+	if (err) {
+		LOG_ERR("Navigation init failed (%d)", err); /* am thanh van chay */
+	}
 	err = adv_phone_create();
 	if (err) {
 		return err;
@@ -519,6 +536,7 @@ int main(void)
 			phone_sink_streaming() ? "STREAMING" : "idle");
 		bcast_source_log_status();
 		phone_sink_log_status();
+		nav_hub_log_status();
 	}
 	return 0;
 }

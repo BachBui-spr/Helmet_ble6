@@ -5,10 +5,13 @@
  *   Control Point (Write, can ma hoa): master -> slave
  *   Event         (Indicate, can ma hoa): slave -> master
  *   Tin nhan 4 byte: [op][session][arg][arg2] (enum ic_op trong <me54/proto/his_proto.h>)
+ *   IC_OP_NAV_* (che do Dinh vi, features/nav): cung dich vu, dung tren lien ket Dinh vi mu-mu
+ *   (central ghi Control Point, peripheral indicate Event), byte "session" la tuoi so do x100 ms.
+ *   Ket noi do nav.c quan ly thi ket qua do tim / dang ky cung chuyen cho nav.c.
  *
  * Dich vu tinh (BT_GATT_SERVICE_DEFINE): co san trong co so du lieu GATT truoc settings_load(),
  * khong lam lech Database Hash giua cac lan khoi dong.
- * Moi callback chay trong bt_rx: chi chuyen tiep cho intercom.c (intercom_on_*).
+ * Moi callback chay trong bt_rx: chi chuyen tiep cho intercom.c (intercom_on_*) / nav.c (nav_on_his_*).
  */
 
 #include <errno.h>
@@ -20,9 +23,11 @@
 #include <zephyr/bluetooth/uuid.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/byteorder.h>
 
 #include "app/app.h"
 #include "features/intercom/intercom.h"
+#include "features/nav/nav.h"
 
 LOG_MODULE_REGISTER(ic_svc, LOG_LEVEL_INF);
 
@@ -45,6 +50,10 @@ static ssize_t cp_write(struct bt_conn *conn, const struct bt_gatt_attr *attr, c
 	}
 	if (len != IC_MSG_LEN) {
 		return BT_GATT_ERR(BT_ATT_ERR_INVALID_ATTRIBUTE_LEN);
+	}
+	if (IC_OP_IS_NAV(p[0])) {
+		nav_on_his_msg(conn, p[0], p[1], sys_get_le16(&p[2]));
+		return len;
 	}
 	intercom_on_msg(conn, p[0], p[2]);
 	return len;
@@ -84,7 +93,17 @@ static void ind_done(struct bt_conn *conn, struct bt_gatt_indicate_params *param
 	atomic_clear(&ind_busy);
 }
 
-/* ---------------- Client (dung khi la master) ---------------- */
+/* ---------------- Client (dung khi la master / central Dinh vi) ---------------- */
+
+/* Ket qua do tim + dang ky: cho nav.c neu ket noi la lien ket Dinh vi, khong thi cho intercom */
+static void discovered(struct bt_conn *conn, int err)
+{
+	if (nav_conn_owned(conn)) {
+		nav_on_his_discovered(conn, err);
+	} else {
+		intercom_on_discovered(conn, err);
+	}
+}
 
 static struct bt_gatt_discover_params disc_params;
 static struct bt_gatt_discover_params ccc_disc_params;
@@ -107,7 +126,11 @@ static uint8_t evt_notify(struct bt_conn *conn, struct bt_gatt_subscribe_params 
 		return BT_GATT_ITER_STOP; /* da huy dang ky (vd mat ket noi) */
 	}
 	if (length == IC_MSG_LEN) {
-		intercom_on_msg(conn, p[0], p[2]);
+		if (IC_OP_IS_NAV(p[0])) {
+			nav_on_his_msg(conn, p[0], p[1], sys_get_le16(&p[2]));
+		} else {
+			intercom_on_msg(conn, p[0], p[2]);
+		}
 	}
 	return BT_GATT_ITER_CONTINUE;
 }
@@ -115,7 +138,7 @@ static uint8_t evt_notify(struct bt_conn *conn, struct bt_gatt_subscribe_params 
 static void sub_done(struct bt_conn *conn, uint8_t err, struct bt_gatt_subscribe_params *params)
 {
 	ARG_UNUSED(params);
-	intercom_on_discovered(conn, err ? -EIO : 0);
+	discovered(conn, err ? -EIO : 0);
 }
 
 static void subscribe_evt(struct bt_conn *conn)
@@ -136,7 +159,7 @@ static void subscribe_evt(struct bt_conn *conn)
 	err = bt_gatt_subscribe(conn, &sub_params);
 	if (err) {
 		LOG_WRN("Subscribe to Event failed (%d)", err);
-		intercom_on_discovered(conn, err);
+		discovered(conn, err);
 	}
 }
 
@@ -148,13 +171,13 @@ static uint8_t disc_cb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 	if (attr == NULL) {
 		if (params->type == BT_GATT_DISCOVER_PRIMARY) {
 			LOG_WRN("HIS not found on peer");
-			intercom_on_discovered(conn, -ENOENT);
+			discovered(conn, -ENOENT);
 		} else if (cp_handle && evt_handle) {
 			subscribe_evt(conn);
 		} else {
 			LOG_WRN("HIS characteristics missing (CP 0x%04x, Event 0x%04x)", cp_handle,
 				evt_handle);
-			intercom_on_discovered(conn, -ENOENT);
+			discovered(conn, -ENOENT);
 		}
 		return BT_GATT_ITER_STOP;
 	}
@@ -169,7 +192,7 @@ static uint8_t disc_cb(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 		params->end_handle = svc_end;
 		err = bt_gatt_discover(conn, params);
 		if (err) {
-			intercom_on_discovered(conn, err);
+			discovered(conn, err);
 		}
 		return BT_GATT_ITER_STOP;
 	}
@@ -216,7 +239,14 @@ static void wr_done(struct bt_conn *conn, uint8_t err, struct bt_gatt_write_para
 
 int ic_svc_send(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg)
 {
-	const uint8_t msg[IC_MSG_LEN] = {op, 0, arg, 0};
+	return ic_svc_send3(conn, to_slave, op, 0, arg, 0);
+}
+
+/* b1: byte "session" (intercom luon 0); che do Dinh vi dung lam tuoi so do (x100 ms) */
+int ic_svc_send3(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t b1, uint8_t arg,
+		 uint8_t arg2)
+{
+	const uint8_t msg[IC_MSG_LEN] = {op, b1, arg, arg2};
 	int err;
 
 	if (to_slave) {

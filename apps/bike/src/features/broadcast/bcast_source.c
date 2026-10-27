@@ -136,6 +136,10 @@ static uint16_t octets = BIKE_OCTETS_DEFAULT; /* cua BIG dang chay */
 static atomic_t running;                      /* moi BIS da started */
 static atomic_t phone_active;
 static atomic_t want_octets;
+/* Che do Dinh vi (features/nav): tam dung BIG de nhuong radio cho Channel Sounding. BIG 10 ms (ca
+ * khi chi phat khung im lang) lam hau het thu tuc CS mu-xe bi huy (do 22/10/2026).
+ */
+static atomic_t paused;
 
 /* Cai dat luu ("bike/...") */
 static uint32_t broadcast_id;
@@ -748,6 +752,11 @@ static void restart_work_fn(struct k_work *w)
 	for (size_t i = 0; i < NBIS_MAX; i++) {
 		bis[i].started = false;
 	}
+	if (atomic_get(&paused)) {
+		queue_reset();
+		LOG_INF("Broadcast paused (navigation mode): BIG stopped");
+		return;
+	}
 
 	/* So octet dien thoai yeu cau (0 = giu nguyen); chi lay ra o buoc nay */
 	want = (uint16_t)atomic_clear(&want_octets);
@@ -795,6 +804,15 @@ void bcast_source_phone_started(uint16_t oct)
 void bcast_source_phone_stopped(void)
 {
 	atomic_set(&phone_active, 0);
+}
+
+void bcast_source_pause(bool pause)
+{
+	if ((atomic_set(&paused, pause ? 1 : 0) != 0) == pause) {
+		return;
+	}
+	LOG_INF("Broadcast %s", pause ? "pausing for navigation mode" : "resuming");
+	(void)request_restart(); /* dung BIG (tam dung) hoac tao lai */
 }
 
 static int new_random_code(void)
@@ -943,7 +961,9 @@ void bcast_source_print(const struct shell *sh)
 	char l[64];
 
 	shell_print(sh, "Broadcast : \"%s\" ID 0x%06x, %s, LC3 48 kHz 10 ms %u B, %s, %s",
-		    BCAST_NAME, broadcast_id, atomic_get(&running) ? "RUNNING" : "not running",
+		    BCAST_NAME, broadcast_id,
+		    atomic_get(&running) ? "RUNNING"
+					 : (atomic_get(&paused) ? "paused (navigation)" : "not running"),
 		    octets, layout_str(l, sizeof(l)),
 		    code_len ? "encrypted (code given to helmets by button pairing)" : "open (no code)");
 	shell_print(sh, "Settings  : isoint %u ms, rtn %u (20 ms refused %ld time(s))", isoint, rtn,
@@ -986,7 +1006,8 @@ void bcast_source_log_status(void)
 	}
 	LOG_INF("broadcast: %s, %s, phone %s | 10 s: pushed %u, sent %u, dropped %u, dry %u, "
 		"repeat %u, silence %u, no buf %u, err %u | in ctrl %s, queue %u",
-		atomic_get(&running) ? "running" : "DOWN", layout_str(l, sizeof(l)),
+		atomic_get(&running) ? "running" : (atomic_get(&paused) ? "paused (navigation)" : "DOWN"),
+		layout_str(l, sizeof(l)),
 		atomic_get(&phone_active) ? "streaming" : "idle", pushed - l_pushed, sent - l_sent,
 		dropped - l_dropped, dry - l_dry, rep - l_rep, sil - l_sil, nobuf - l_nobuf,
 		err - l_err, ctl, q_cnt);

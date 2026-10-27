@@ -63,6 +63,9 @@ void ic_audio_print(const struct shell *sh);
 /* ic_service.c */
 int ic_svc_discover(struct bt_conn *conn); /* master: tim HIS + dang ky Event */
 int ic_svc_send(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t arg);
+/* Tin nhan day du [op][b1][arg][arg2] (che do Dinh vi: b1 = tuoi so do x100 ms) */
+int ic_svc_send3(struct bt_conn *conn, bool to_slave, uint8_t op, uint8_t b1, uint8_t arg,
+		 uint8_t arg2);
 bool ic_svc_busy(void); /* con lenh ghi / indicate chua xong */
 
 #endif /* FEATURES_INTERCOM_INTERCOM_H_ */

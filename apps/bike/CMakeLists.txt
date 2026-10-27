@@ -18,3 +18,4 @@ target_include_directories(app PRIVATE
 add_subdirectory(src/app)                 # lop 4: ung dung
 add_subdirectory(src/features/phone)      # lop 3: chuc nang
 add_subdirectory(src/features/broadcast)
+add_subdirectory(src/features/nav)

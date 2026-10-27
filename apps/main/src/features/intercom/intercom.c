@@ -41,6 +41,7 @@
 #include "app/app.h"
 #include "features/broadcast/broadcast.h"
 #include "features/intercom/intercom.h"
+#include "features/nav/nav.h"
 #include "features/phone/le_audio.h"
 
 LOG_MODULE_REGISTER(intercom, LOG_LEVEL_INF);
@@ -551,6 +552,11 @@ void intercom_select(enum ic_role r)
 
 	if (mode != ICM_NORMAL) {
 		LOG_WRN("Intercom busy (%s) - ignoring role selection", intercom_mode_str(mode));
+		return;
+	}
+	if (nav_active()) {
+		/* Dinh vi co the dang giu lien ket toi chinh mu ban (moi cap thiet bi 1 ket noi) */
+		LOG_WRN("Intercom not available in navigation mode - turn it off first (hold Call 1 s)");
 		return;
 	}
 	if (s == HS_RINGING || s == HS_IN_CALL || s == HS_SHUTDOWN || s == HS_BOOT) {

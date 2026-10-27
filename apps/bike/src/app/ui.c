@@ -44,6 +44,8 @@ static const uint8_t tone_prompt[HUB_TONE_COUNT] = {
 	[HUB_TONE_STATUS_OK] = PROMPT_STATUS_OK,
 	[HUB_TONE_STATUS_NO_LINK] = PROMPT_STATUS_NO_LINK,
 	[HUB_TONE_UNPAIR] = PROMPT_PAIRING,
+	[HUB_TONE_NAV_ON] = PROMPT_NAV_ON,
+	[HUB_TONE_NAV_OFF] = PROMPT_NAV_OFF,
 };
 
 void hub_tone(enum hub_tone t)

@@ -36,6 +36,8 @@ enum prompt_id {
 	PROMPT_BC_JOINED,   /* da nhan duoc am thanh broadcast */
 	PROMPT_BC_LEFT,     /* roi broadcast */
 	PROMPT_BC_FAIL,     /* khong tim thay / khong vao duoc broadcast */
+	PROMPT_NAV_ON,      /* bat che do Dinh vi */
+	PROMPT_NAV_OFF,     /* tat che do Dinh vi */
 	PROMPT_COUNT,
 };
 

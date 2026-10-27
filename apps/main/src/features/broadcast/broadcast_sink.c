@@ -59,6 +59,7 @@
 #include "app/app.h"
 #include "features/broadcast/broadcast.h"
 #include "features/intercom/intercom.h"
+#include "features/nav/nav.h"
 #include "features/phone/le_audio.h"
 
 LOG_MODULE_REGISTER(bcast, LOG_LEVEL_INF);
@@ -285,6 +286,7 @@ static K_TIMER_DEFINE(t_rejoin, t_rejoin_fn, NULL);
 
 #define BC_REJOIN_FIRST_S 5  /* sau khi bat may */
 #define BC_REJOIN_RETRY_S 30 /* hub chua bat / ngoai tam: thu lai */
+#define BC_REJOIN_SOON_S  3  /* het Dinh vi: cho xe tao lai BIG roi vao lai */
 
 const char *bcast_mode_str(enum bc_mode m)
 {
@@ -627,7 +629,7 @@ static struct bt_le_per_adv_sync_cb pa_cbs = {
 
 static bool busy_elsewhere(void)
 {
-	return intercom_mode() != ICM_NORMAL || app_state() == HS_SHUTDOWN;
+	return intercom_mode() != ICM_NORMAL || nav_active() || app_state() == HS_SHUTDOWN;
 }
 
 static int sd_pa_sync_req(struct bt_conn *conn,
@@ -1151,6 +1153,11 @@ static void start_scan(void)
 		audio_out_prompt(PROMPT_BC_FAIL);
 		return;
 	}
+	if (nav_active()) {
+		LOG_WRN("Auracast search not available in navigation mode - turn it off first");
+		audio_out_prompt(PROMPT_BC_FAIL);
+		return;
+	}
 	if (s == HS_RINGING || s == HS_IN_CALL || s == HS_SHUTDOWN || s == HS_BOOT) {
 		LOG_WRN("Auracast search not available in state %s", app_state_str(s));
 		return;
@@ -1422,8 +1429,10 @@ static void on_rejoin(void)
 	if (!saved_valid || !rejoin_enabled || mode != BC_OFF) {
 		return;
 	}
-	/* Dang goi / intercom / dang nghe nhac unicast tu dien thoai: chua quet (tranh tranh radio) */
-	if (intercom_mode() != ICM_NORMAL || s == HS_RINGING || s == HS_IN_CALL ||
+	/* Dang goi / intercom / Dinh vi / dang nghe nhac unicast tu dien thoai: chua quet (tranh
+	 * tranh radio)
+	 */
+	if (intercom_mode() != ICM_NORMAL || nav_active() || s == HS_RINGING || s == HS_IN_CALL ||
 	    s == HS_SHUTDOWN || s == HS_BOOT || le_audio_is_streaming()) {
 		k_timer_start(&t_rejoin, K_SECONDS(BC_REJOIN_RETRY_S), K_NO_WAIT);
 		return;
@@ -1991,6 +2000,13 @@ void bcast_leave(void)
 	if (mode != BC_OFF) {
 		LOG_INF("Auracast: leaving broadcast");
 		end_session(PROMPT_BC_LEFT, false);
+	}
+}
+
+void bcast_rejoin_soon(void)
+{
+	if (rejoin_enabled && saved_valid && mode == BC_OFF) {
+		k_timer_start(&t_rejoin, K_SECONDS(BC_REJOIN_SOON_S), K_NO_WAIT);
 	}
 }
 

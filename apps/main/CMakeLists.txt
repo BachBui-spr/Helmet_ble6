@@ -21,4 +21,5 @@ add_subdirectory(src/features/phone)      # lop 3: chuc nang
 add_subdirectory(src/features/intercom)
 add_subdirectory(src/features/broadcast)
 add_subdirectory(src/features/thermo)
+add_subdirectory(src/features/nav)
 add_subdirectory(src/debug)               # chan doan

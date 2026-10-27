@@ -19,7 +19,13 @@
 enum ic_op {
 	IC_OP_HELLO = 0x01, /* arg = phien ban giao thuc */
 	IC_OP_END = 0x14,   /* arg = enum ic_reason */
+	/* Che do Dinh vi (features/nav), tren lien ket Dinh vi mu-mu: [op][tuoi x100 ms][cm thap][cm cao] */
+	IC_OP_NAV_HELLO = 0x40,     /* central -> peripheral: day la lien ket Dinh vi, arg = ver */
+	IC_OP_NAV_DIST_PEER = 0x41, /* central -> peripheral: khoang cach mu-mu central da do */
+	IC_OP_NAV_DIST_BIKE = 0x42, /* hai chieu: khoang cach tu mu gui toi xe */
 };
+
+#define IC_OP_IS_NAV(op) ((op) >= IC_OP_NAV_HELLO && (op) <= IC_OP_NAV_DIST_BIKE)
 
 enum ic_reason {
 	IC_REASON_USER = 0x00,

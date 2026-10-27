@@ -20,6 +20,7 @@
 #include "app/app_internal.h"
 #include "features/broadcast/broadcast.h"
 #include "features/intercom/intercom.h"
+#include "features/nav/nav.h"
 #include "features/phone/call_ctrl.h"
 #include "features/phone/le_audio.h"
 #include "features/phone/media_ctrl.h"
@@ -292,6 +293,11 @@ static int cmd_ic(const struct shell *sh, size_t argc, char **argv)
 	return intercom_shell(sh, argc, argv);
 }
 
+static int cmd_nav(const struct shell *sh, size_t argc, char **argv)
+{
+	return nav_shell(sh, argc, argv);
+}
+
 static int cmd_trace(const struct shell *sh, size_t argc, char **argv)
 {
 	return gatt_trace_shell(sh, argc, argv);
@@ -444,6 +450,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(helmet_cmds,
 	SHELL_CMD_ARG(bc, NULL,
 		      "Auracast: helmet bc [status|scan [name]|stop|forget|code <text>|code clear]", cmd_bc,
 		      1, 2),
+	SHELL_CMD_ARG(nav, NULL,
+		      "Navigation (distances to bike / other helmet): helmet nav [status|on|off|"
+		      "ch <1|2|4>|period <ms>]",
+		      cmd_nav, 1, 2),
 	SHELL_CMD_ARG(trace, NULL, "Diagnostic GATT access log: helmet trace [on|off]", cmd_trace,
 		      1, 1),
 	SHELL_CMD_ARG(temp, NULL,

@@ -31,6 +31,7 @@
 #include "app/app_internal.h"
 #include "features/broadcast/broadcast.h"
 #include "features/intercom/intercom.h"
+#include "features/nav/nav.h"
 #include "features/phone/call_ctrl.h"
 #include "features/phone/le_audio.h"
 #include "features/phone/media_ctrl.h"
@@ -272,10 +273,10 @@ static void handle_event(const struct helmet_evt *evt)
 		break;
 
 	case EVT_IDLE_TIMEOUT:
-		/* Dang co intercom (ke ca tim / cho) hoac dang PHAT Auracast thi khong tu tat.
+		/* Dang co intercom (ke ca tim / cho), Dinh vi hoac dang PHAT Auracast thi khong tu tat.
 		 * Chi dang cho broadcast (nguon tam dung, chua co ma) thi van tu tat nhu IDLE.
 		 */
-		if (state == HS_IDLE && intercom_mode() == ICM_NORMAL &&
+		if (state == HS_IDLE && intercom_mode() == ICM_NORMAL && !nav_active() &&
 		    bcast_mode() != BC_STREAMING) {
 			power_off(OFF_IDLE);
 		}
@@ -287,6 +288,10 @@ static void handle_event(const struct helmet_evt *evt)
 
 	case EVT_BC:
 		bcast_handle();
+		break;
+
+	case EVT_NAV:
+		nav_handle();
 		break;
 
 	case EVT_ADV_SLOWDOWN:
@@ -451,6 +456,7 @@ int main(void)
 	app_bt_register_auth();
 	(void)gatt_trace_init(); /* chan doan tam thoi: dien thoai doc / ghi gi */
 	(void)intercom_init();
+	(void)nav_init();
 
 	err = media_ctrl_init();
 	if (err) {

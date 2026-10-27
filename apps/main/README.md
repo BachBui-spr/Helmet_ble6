@@ -1,6 +1,6 @@
 # apps/main: Helmet đầy đủ chức năng
 
-Firmware hiện thực bản thiết kế [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md](../../docs/HELMET_THIET_KE_CHUC_NANG_MOI.md), thêm intercom ([docs/HELMET_THIET_KE_INTERCOM.md](../../docs/HELMET_THIET_KE_INTERCOM.md)) và Auracast / vào xe ([docs/HELMET_AURACAST.md](../../docs/HELMET_AURACAST.md)). Mã chia theo lớp: phần riêng của mũ nằm trong `src/`, phần dùng chung với xe nằm trong `lib/` ở gốc project (xem [README.md](../../README.md), mục *Kiến trúc mã nguồn*).
+Firmware hiện thực bản thiết kế [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md](../../docs/HELMET_THIET_KE_CHUC_NANG_MOI.md), thêm intercom ([docs/HELMET_THIET_KE_INTERCOM.md](../../docs/HELMET_THIET_KE_INTERCOM.md)), Auracast / vào xe ([docs/HELMET_AURACAST.md](../../docs/HELMET_AURACAST.md)) và Định vị bằng Channel Sounding ([docs/HELMET_NAV_DINH_VI.md](../../docs/HELMET_NAV_DINH_VI.md)). Định vị là chức năng riêng: bật thì kết thúc intercom và tạm rời Auracast, tắt thì tự nghe lại nhạc của xe. Mã chia theo lớp: phần riêng của mũ nằm trong `src/`, phần dùng chung với xe nằm trong `lib/` ở gốc project (xem [README.md](../../README.md), mục *Kiến trúc mã nguồn*).
 
 | Chức năng | File |
 |---|---|
@@ -9,7 +9,8 @@ Firmware hiện thực bản thiết kế [docs/HELMET_THIET_KE_CHUC_NANG_MOI.md
 | Intercom mũ–mũ | `src/features/intercom/`: `intercom.c`, `ic_service.c`, `ic_audio.c` |
 | Nghe Auracast, vào xe bằng nút | `src/features/broadcast/`: `broadcast_sink.c`, `hub_link.c` |
 | Nhiệt độ + Health Thermometer Service | `src/features/thermo/thermo.c` |
-| Chẩn đoán: ghi SDU ra RTT, log truy cập GATT | `src/debug/`: `capture.c`, `gatt_trace.c` |
+| Định vị: khoảng cách tới xe, tới mũ kia, mũ kia tới xe (Channel Sounding IPT, giữ Call 1 s) | `src/features/nav/nav.c` |
+| Chẩn đoán: ghi SDU ra RTT (chỉ khi build `EXTRA=-DCONFIG_HELMET_CAPTURE=y`), log truy cập GATT | `src/debug/`: `capture.c`, `gatt_trace.c` |
 | Đường ra loa: giải mã LC3, bù trôi clock từng mẫu, âm báo, lấy mẫu lại theo tần số I2S thật | `lib/services/audio_out.c` + `lib/core/pcm_ring.c`, `resampler.c`, `mixer.c`, `prompts.c` + `lib/hal/i2s_out.c` |
 | Đàm thoại (chiều lên): micro PDM, khử vọng NLMS, NLP, giảm ồn, AGC, mã hóa LC3, gửi SDU | `lib/services/voice_tx.c` + `lib/core/voice_dsp.c` + `lib/hal/mic_in.c` |
 | Cử chỉ nút: ngắn, đúp, giữ, giữ lâu, lặp, tổ hợp | `lib/services/buttons.c` + `lib/hal/keys.c` |
@@ -24,6 +25,7 @@ make rtt
 ```
 
 Bản build đã kiểm tra (27/10/2026, sau khi tổ chức lại theo lớp): FLASH 41.45 % (646 924 B), RAM 95.76 % (251 027 B), không có cảnh báo từ mã của app.
+Nhánh `test/Broadcast-Sounding` (thêm Định vị, capture tắt mặc định): FLASH 46.14 % (720 052 B), RAM 98.96 % (259 427 B).
 
 IntelliSense: `${workspaceFolder}/build/main/main/compile_commands.json` đã có trong danh sách `compileCommands` của `.vscode/c_cpp_properties.json` (đứng đầu danh sách, và danh sách dự phòng `includePath` cũng trỏ vào `apps/main/src` + `build/main`). Cần chạy `make APP=apps/main build` ít nhất một lần để file đó tồn tại.
 
@@ -38,6 +40,7 @@ IntelliSense: `${workspaceFolder}/build/main/main/compile_commands.json` đã c�
 | `helmet voice`, `helmet dsp [<aec\|ns\|agc> <on\|off>]` | Thống kê chiều lên; bật/tắt từng khâu DSP |
 | `helmet power [off]`, `helmet autooff <phút>`, `helmet vdd` | Nguồn |
 | `helmet temp [raw\|cal\|emis <‰>\|alarm <°C>]` | Nhiệt độ |
+| `helmet nav [status\|on\|off\|ch <1\|2\|4>\|period <ms>]` | Định vị: bật / tắt, trạng thái từng liên kết và khoảng cách |
 | `helmet perf` | Thời gian CPU của giải mã, khối ra I2S, DSP giọng nói, mã hóa |
 | `helmet status`, `kernel stacks` | Tổng quan; mức dùng stack của từng thread |
 

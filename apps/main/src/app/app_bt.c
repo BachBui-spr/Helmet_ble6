@@ -1,6 +1,6 @@
 /*
  * Helmet (apps/main) - lop UNG DUNG: quang ba LE Audio, ket noi / bao mat, giao ket noi cho luong
- * dien thoai. Ket noi cua intercom va Bike hub duoc chuyen cho chuc nang tuong ung.
+ * dien thoai. Ket noi cua intercom, Dinh vi va Bike hub duoc chuyen cho chuc nang tuong ung.
  */
 
 #include <zephyr/kernel.h>
@@ -17,6 +17,7 @@
 #include "app/app_internal.h"
 #include "features/broadcast/broadcast.h"
 #include "features/intercom/intercom.h"
+#include "features/nav/nav.h"
 #include "features/phone/call_ctrl.h"
 #include "features/phone/le_audio.h"
 #include "features/phone/media_ctrl.h"
@@ -33,7 +34,9 @@ static struct bt_le_ext_adv *adv;
 static bool adv_slow;    /* che do quang ba mong muon: true = 150 ms */
 static bool adv_on;      /* bo quang ba dang chay that */
 static bool adv_on_slow; /* ... va dang o che do cham */
-static bool adv_data_ic; /* du lieu quang ba dang co co intercom (slave dang cho) */
+/* Du lieu quang ba dang dung: AD_NORMAL, AD_IC (slave intercom dang cho), AD_NAV (Dinh vi) */
+enum ad_mode { AD_NORMAL, AD_IC, AD_NAV };
+static uint8_t adv_data_mode;
 static struct bt_conn *active_conn;
 static bt_security_t sec_level;
 static K_SEM_DEFINE(disc_sem, 0, 1);
@@ -98,14 +101,32 @@ static const struct bt_data ad_ic[] = {
 	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
 };
 
+/* Che do Dinh vi: them Service Data Dinh vi {UUID, ver, loai = mu, ma} (nav.c dien luc bat) */
+static const struct bt_data ad_nav[] = {
+	BT_DATA_BYTES(BT_DATA_FLAGS, (BT_LE_AD_GENERAL | BT_LE_AD_NO_BREDR)),
+	BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE,
+		      BT_BYTES_LIST_LE16(BT_APPEARANCE_WEARABLE_AUDIO_DEVICE_HEADSET)),
+	BT_DATA_BYTES(BT_DATA_UUID16_SOME, BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL),
+		      BT_UUID_16_ENCODE(BT_UUID_CAS_VAL), BT_UUID_16_ENCODE(BT_UUID_TMAS_VAL)),
+	BT_DATA(BT_DATA_SVC_DATA16, tmas_addata, ARRAY_SIZE(tmas_addata)),
+	BT_DATA(BT_DATA_SVC_DATA16, cas_addata, ARRAY_SIZE(cas_addata)),
+	BT_DATA(BT_DATA_SVC_DATA16, ascs_addata, ARRAY_SIZE(ascs_addata)),
+	BT_DATA(BT_DATA_SVC_DATA128, nav_adv_svc, NAV_ADV_LEN),
+	BT_DATA(BT_DATA_NAME_COMPLETE, CONFIG_BT_DEVICE_NAME, sizeof(CONFIG_BT_DEVICE_NAME) - 1),
+};
+
 static void adv_work_handler(struct k_work *work)
 {
-	/* Quang ba khi chua co dien thoai, hoac khi la slave intercom dang cho (ca khi da co dien
-	 * thoai: BT_MAX_CONN = 3). Slave dang cho luon quang ba nhanh.
+	/* Quang ba khi chua co dien thoai, hoac khi la slave intercom dang cho / dang Dinh vi (ca
+	 * khi da co dien thoai). Slave dang cho quang ba nhanh; Dinh vi quang ba cham (150 ms: mu
+	 * ban quet 33 % van thay trong ~1 s, it chiem radio luc dang do CS).
 	 */
 	const bool ic = intercom_adv_ic();
-	const bool want = adv != NULL && app_state() != HS_SHUTDOWN && (active_conn == NULL || ic);
-	const bool slow = adv_slow && !ic;
+	const bool nav = nav_active();
+	const uint8_t mode = nav ? AD_NAV : (ic ? AD_IC : AD_NORMAL);
+	const bool want = adv != NULL && app_state() != HS_SHUTDOWN &&
+			  (active_conn == NULL || ic || nav);
+	const bool slow = !ic && (adv_slow || nav);
 	int err;
 
 	ARG_UNUSED(work);
@@ -122,13 +143,18 @@ static void adv_work_handler(struct k_work *work)
 		return;
 	}
 
-	if (ic != adv_data_ic) {
-		err = bt_le_ext_adv_set_data(adv, ic ? ad_ic : ad, ic ? ARRAY_SIZE(ad_ic) : ARRAY_SIZE(ad),
-					     NULL, 0);
+	if (mode != adv_data_mode) {
+		if (mode == AD_NAV) {
+			err = bt_le_ext_adv_set_data(adv, ad_nav, ARRAY_SIZE(ad_nav), NULL, 0);
+		} else if (mode == AD_IC) {
+			err = bt_le_ext_adv_set_data(adv, ad_ic, ARRAY_SIZE(ad_ic), NULL, 0);
+		} else {
+			err = bt_le_ext_adv_set_data(adv, ad, ARRAY_SIZE(ad), NULL, 0);
+		}
 		if (err) {
 			LOG_ERR("Advertising data update failed (%d)", err);
 		} else {
-			adv_data_ic = ic;
+			adv_data_mode = mode;
 		}
 	}
 
@@ -160,7 +186,8 @@ static void adv_work_handler(struct k_work *work)
 	adv_on = true;
 	adv_on_slow = slow;
 	LOG_INF("Advertising as \"%s\" (%s%s)", CONFIG_BT_DEVICE_NAME,
-		slow ? "reduced 150 ms" : "fast 20-30 ms", ic ? ", intercom slave" : "");
+		slow ? "reduced 150 ms" : "fast 20-30 ms",
+		nav ? ", navigation" : (ic ? ", intercom slave" : ""));
 }
 
 void app_adv_set_slow(bool slow)
@@ -198,6 +225,7 @@ void app_bt_shutdown(void)
 	struct bt_conn *conn = active_conn ? bt_conn_ref(active_conn) : NULL;
 
 	bcast_leave();       /* roi broadcast Auracast (dung BIG, PA) */
+	nav_shutdown();      /* ngat cac lien ket Dinh vi */
 	intercom_shutdown(); /* bao END cho mu ban truoc khi ngat */
 	app_set_state(HS_SHUTDOWN);
 	if (conn != NULL) {
@@ -230,6 +258,15 @@ static void connected(struct bt_conn *conn, uint8_t err)
 	/* Lien ket tam toi Bike hub (lay thong tin vao xe): hub_link.c xu ly */
 	if (hub_link_owned(conn)) {
 		hub_link_connected(conn, err);
+		return;
+	}
+	/* Che do Dinh vi: lien ket central nav.c vua tao, hoac moi ket noi den trong luc Dinh vi
+	 * (ung vien mu ban). Phai hoi truoc intercom: intercom nhan moi ket noi central con lai.
+	 */
+	if (nav_conn_connected(conn, err)) {
+		if (!err) {
+			LOG_INF("Connected: %s (navigation)", addr);
+		}
 		return;
 	}
 	/* Ket noi mu-mu (master) hoac ung vien khi slave dang cho: intercom.c xu ly */
@@ -269,6 +306,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
 	if (hub_link_owned(conn)) {
 		hub_link_disconnected(conn, reason);
+		return;
+	}
+	if (nav_conn_owned(conn)) {
+		nav_conn_disconnected(conn, reason);
 		return;
 	}
 	if (intercom_conn_owned(conn)) {
@@ -325,6 +366,10 @@ static void security_changed(struct bt_conn *conn, bt_security_t level, enum bt_
 {
 	if (hub_link_owned(conn)) {
 		hub_link_secured(conn, level, err);
+		return;
+	}
+	if (nav_conn_owned(conn)) {
+		nav_conn_secured(conn, level, err);
 		return;
 	}
 	if (intercom_conn_owned(conn)) {

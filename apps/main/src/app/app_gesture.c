@@ -16,6 +16,7 @@
 #include "app/app_internal.h"
 #include "features/broadcast/broadcast.h"
 #include "features/intercom/intercom.h"
+#include "features/nav/nav.h"
 #include "features/phone/call_ctrl.h"
 #include "features/phone/le_audio.h"
 #include "features/phone/media_ctrl.h"
@@ -57,6 +58,13 @@ void app_gesture(uint8_t key, uint8_t g)
 	case KEY_CALL:
 		if (g == G_SEQ_HOLD) {
 			bcast_toggle(); /* Power ngan -> giu Call 2 s: tu tim / roi Auracast */
+			break;
+		}
+		/* Dinh vi: giu Call 1 s khi khong co cuoc goi dien thoai (ke ca khi dang intercom /
+		 * nghe Auracast: Dinh vi tu ket thuc chung). Dang do chuong: giu 1 s la tu choi (duoi).
+		 */
+		if (g == G_LONG && app_state() != HS_RINGING && app_state() != HS_IN_CALL) {
+			nav_toggle();
 			break;
 		}
 		/* Cuoc goi dien thoai uu tien; sau do intercom (Call ngan: huy / ket thuc) */

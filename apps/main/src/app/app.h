@@ -43,15 +43,16 @@ enum helmet_evt_type {
 	EVT_POWER_OFF_REQ, /* lenh shell */
 	EVT_IC,            /* intercom: co viec moi trong hang doi rieng cua intercom.c */
 	EVT_BC,            /* Auracast: co su kien moi cho broadcast_sink.c */
+	EVT_NAV,           /* Dinh vi: co viec moi trong hang doi rieng cua nav.c */
 };
 
 /* Goi duoc tu moi thread / ISR, khong bao gio cho */
 void app_post(uint8_t type, uint8_t a, uint8_t b, uint32_t v);
 enum helmet_state app_state(void);
 const char *app_state_str(enum helmet_state s);
-/* intercom.c: nhu cau quang ba doi (slave bat/tat co IC trong du lieu quang ba) */
+/* intercom.c / nav.c: nhu cau quang ba doi (co IC cua slave, Service Data Dinh vi) */
 void app_adv_refresh(void);
-/* intercom.c: ket noi den khong phai mu ban -> giao cho luong dien thoai (nhan luon 1 ref) */
+/* intercom.c / nav.c: ket noi den khong phai mu ban -> giao cho luong dien thoai (nhan 1 ref) */
 void app_phone_adopt(struct bt_conn *conn);
 /* Co hoat dong (nghe, intercom...): hen gio tu tat tinh lai tu luc nay */
 void power_activity(void);

@@ -55,6 +55,9 @@ static const struct prompt_seg s_bc_search[] = {{988, 50, 30}, {1319, 50, 30}, {
 static const struct prompt_seg s_bc_joined[] = {{1319, 60, 20}, {1760, 150, 0}};
 static const struct prompt_seg s_bc_left[] = {{1760, 60, 20}, {1319, 150, 0}};
 static const struct prompt_seg s_bc_fail[] = {{494, 120, 60}, {494, 120, 60}, {494, 120, 0}};
+/* Dinh vi: 3 not di len (bat) / di xuong (tat) - mu va xe dung chung */
+static const struct prompt_seg s_nav_on[] = {{659, 60, 20}, {988, 60, 20}, {1319, 100, 0}};
+static const struct prompt_seg s_nav_off[] = {{1319, 60, 20}, {988, 60, 20}, {659, 100, 0}};
 
 #define DEF(id, nm, s, lp) [id] = {.name = nm, .seg = s, .n = ME54_ARRAY_SIZE(s), .loop = lp}
 
@@ -82,6 +85,8 @@ static const struct prompt_def defs[PROMPT_COUNT] = {
 	DEF(PROMPT_BC_JOINED, "bc_joined", s_bc_joined, false),
 	DEF(PROMPT_BC_LEFT, "bc_left", s_bc_left, false),
 	DEF(PROMPT_BC_FAIL, "bc_fail", s_bc_fail, false),
+	DEF(PROMPT_NAV_ON, "nav_on", s_nav_on, false),
+	DEF(PROMPT_NAV_OFF, "nav_off", s_nav_off, false),
 };
 
 /* Bang sin 1 chu ky + 1 mau de noi suy khong phai quay vong */

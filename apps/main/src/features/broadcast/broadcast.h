@@ -31,7 +31,9 @@ int bcast_register(void); /* truoc bt_enable(): BASS vao GATT */
 int bcast_init(void);     /* sau settings_load() */
 void bcast_handle(void);  /* EVT_BC, chi goi tu thread bo dieu khien */
 void bcast_toggle(void);  /* nut: tu tim broadcast gan nhat, hoac roi broadcast dang nghe */
-void bcast_leave(void);   /* roi broadcast (intercom, tat may); thread bo dieu khien */
+void bcast_leave(void);   /* roi broadcast (intercom, Dinh vi, tat may); thread bo dieu khien */
+/* Het Dinh vi: vao lai broadcast cua hub da ghep sau vai giay (neu chua roi bang nut) */
+void bcast_rejoin_soon(void);
 bool bcast_active(void);  /* khac BC_OFF (doc duoc tu moi thread) */
 enum bc_mode bcast_mode(void);
 const char *bcast_mode_str(enum bc_mode m);

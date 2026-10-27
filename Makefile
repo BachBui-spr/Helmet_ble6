@@ -37,7 +37,7 @@ help:
 	@echo "make recover        - mo khoa + XOA TOAN BO chip (khi bi APPROTECT)"
 	@echo "make reset          - reset chip"
 	@echo "make rtt            - xem log + shell qua RTT (chi can SWD)"
-	@echo "make audio          - nghe/luu am thanh mu nhan duoc (thay cho make rtt)"
+	@echo "make audio          - nghe/luu am thanh mu nhan duoc (thay cho make rtt; build voi EXTRA=-DCONFIG_HELMET_CAPTURE=y)"
 	@echo "make uart           - xem log + shell qua UART $(UART_PORT) @ $(UART_BAUD)"
 	@echo "make menuconfig     - chinh Kconfig"
 	@echo "make debug          - debug bang GDB qua J-Link"
